@@ -205,6 +205,12 @@ const addVmApplication = (index, app = {}) => {
 const enrolledDeviceRows = () =>
   cy.get('[data-testid="enrolled-devices-table"] tbody tr[data-testid^="enrolled-device-row-"]')
 
+/** Enrolled table can sit below "Devices pending approval"; scroll it into view before row/link queries. */
+const scrollEnrolledDevicesTableIntoView = () => {
+  cy.get('[data-testid="enrolled-devices-table"]', { timeout: 60000 }).should('exist')
+  cy.get('[data-testid="enrolled-devices-table"]').scrollIntoView({ block: 'start' })
+}
+
 /**
  * Closest ancestor of the enrolled table that also contains this list’s pagination (sibling of the
  * table in the DOM). Safer than `#devices-toolbar`.parent() when the console wraps the toolbar.
@@ -261,14 +267,16 @@ const clickEnrolledDeviceNameLinkAcrossPages = (deviceRef, pagesLeft = 8) => {
   })
 }
 
-/** Enrolled-table row by alias. Callers should chain .scrollIntoView() before interacting. */
+/** Enrolled-table row by alias. Pure query — keeps Cypress retry chain for long waits/polling. */
 const enrolledDeviceRowByAlias = (deviceName, timeout = 60000) =>
   cy.contains('[data-testid="enrolled-devices-table"] tr', deviceName, { timeout })
 
-const enrolledDeviceLinkByAlias = (deviceName, timeout = 60000) =>
-  enrolledDeviceRowByAlias(deviceName, timeout)
+const enrolledDeviceLinkByAlias = (deviceName, timeout = 60000) => {
+  scrollEnrolledDevicesTableIntoView()
+  return enrolledDeviceRowByAlias(deviceName, timeout)
     .scrollIntoView({ block: 'center' })
     .find(`[data-testid^="device-name-link-"]`)
+}
 
 /**
  * DevicesPage object for device management operations.
@@ -314,6 +322,7 @@ export const devicesPage = {
     cy.get('[data-testid="rich-validation-field-deviceAlias"]').should('have.value', deviceName)
     cy.get('[data-testid="approve-device-form-submit"]').should('be.visible')
     cy.get('[data-testid="approve-device-form-submit"]').click()
+    scrollEnrolledDevicesTableIntoView()
     enrolledDeviceRowByAlias(deviceName, 500000).should('contain', 'Online')
   },
 
@@ -351,6 +360,7 @@ export const devicesPage = {
 
   editDevice: (image, currentName = 'test-device', newName = 'test-device-edited') => {
     common.navigateTo('Devices')
+    scrollEnrolledDevicesTableIntoView()
 
     enrolledDeviceRowByAlias(currentName)
       .scrollIntoView({ block: 'center' })
@@ -376,7 +386,7 @@ export const devicesPage = {
 
   checkDeviceOutOfDate: (deviceName = 'test-device-edited2') => {
     common.navigateTo('Devices')
-    enrolledDeviceLinkByAlias(deviceName)
+    scrollEnrolledDevicesTableIntoView()
 
     const intervalMs = 5000
     const totalMs = 120000
@@ -408,6 +418,7 @@ export const devicesPage = {
 
   decommissionDevice: (deviceName = 'test-device-edited2') => {
     common.navigateTo('Devices')
+    scrollEnrolledDevicesTableIntoView()
 
     enrolledDeviceRowByAlias(deviceName)
       .scrollIntoView({ block: 'center' })
@@ -501,6 +512,7 @@ export const devicesPage = {
       }
     })
     cy.get('[data-testid="enrolled-devices-table"]', { timeout: 60000 }).should('exist')
+    scrollEnrolledDevicesTableIntoView()
   },
 
   /**
@@ -690,6 +702,7 @@ export const devicesPage = {
 
   openEditDeviceConfigurations: (deviceName) => {
     common.navigateTo('Devices')
+    scrollEnrolledDevicesTableIntoView()
     enrolledDeviceRowByAlias(deviceName)
       .scrollIntoView({ block: 'center' })
       .find(`[data-testid^="device-row-actions-"] .pf-v6-c-menu-toggle`)
