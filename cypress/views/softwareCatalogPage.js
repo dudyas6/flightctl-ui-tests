@@ -45,7 +45,10 @@ export const softwareCatalogPage = {
 
   /** Click the wizard Next button. */
   clickWizardNext: () => {
-    cy.get('[data-testid="wizard-next-button"]').should('be.visible').click()
+    cy.get('[data-testid="wizard-next-button"]', { timeout: 10000 })
+      .should('be.visible')
+      .and('not.be.disabled')
+      .click()
   },
 
   /**
@@ -92,5 +95,51 @@ export const softwareCatalogPage = {
     cy.contains('Deployed Software')
       .closest('.pf-v6-c-card')
       .should('contain', catalogItemName)
+  },
+
+  /** Select the "Existing Device" radio in the Specifications step. */
+  selectExistingDeviceTarget: () => {
+    cy.get('label[for="radiofield-device-radio"]', { timeout: 30000 })
+      .should('be.visible')
+      .click()
+  },
+
+  /** In the "Select device" table (wizard step 2), click the radio for the given device. */
+  selectDeviceByAlias: (alias) => {
+    cy.contains('tr', alias, { timeout: 30000 })
+      .find('input[type="radio"]')
+      .click({ force: true })
+  },
+
+  /** Click the "View device" link on the success page. */
+  clickViewDevice: () => {
+    cy.contains('button', 'View device').should('be.visible').click()
+  },
+
+  /** Click the "Catalog" tab on the device details page. */
+  clickDeviceCatalogTab: () => {
+    cy.contains('button[role="tab"]', 'Catalog', { timeout: 30000 })
+      .should('be.visible')
+      .click()
+  },
+
+  /** Open the kebab menu in the catalog item details drawer. */
+  openDrawerKebab: () => {
+    cy.get('.pf-v6-c-drawer__panel', { timeout: 10000 })
+      .find('button.pf-v6-c-menu-toggle')
+      .first()
+      .click()
+  },
+
+  /** Verify the "Delete" option in the kebab dropdown is disabled (delete protection). */
+  verifyDeleteDisabled: () => {
+    cy.contains('button', 'Delete', { timeout: 5000 })
+      .should('be.visible')
+      .and('have.attr', 'aria-disabled', 'true')
+  },
+
+  /** Close the kebab dropdown by pressing Escape. */
+  closeKebabDropdown: () => {
+    cy.get('body').type('{esc}')
   },
 }

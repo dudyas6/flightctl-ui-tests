@@ -39,10 +39,20 @@ const tryCloseConsoleWelcomeTourModal = (attempt = 1, maxRetries = 10, retryDela
  */
 const tryCloseOnboardingModal = (attempt = 1, maxRetries = 15, retryDelay = 2000) => {
   cy.get('body').then(($body) => {
-    const $btn = $body.find('[data-ouia-component-id="clustersOnboardingModal-ModalBoxCloseButton"]')
-    if ($btn.length > 0) {
+    const $ouiaBtn = $body.find('[data-ouia-component-id="clustersOnboardingModal-ModalBoxCloseButton"]')
+    if ($ouiaBtn.length > 0) {
       cy.get('[data-ouia-component-id="clustersOnboardingModal-ModalBoxCloseButton"]').click()
-    } else if (attempt < maxRetries) {
+      return
+    }
+    const $bullseye = $body.find('.pf-v6-l-bullseye:visible')
+    if ($bullseye.length > 0) {
+      const $close = $bullseye.find('button[aria-label="Close"], button.pf-v6-c-modal-box__close')
+      if ($close.length > 0) {
+        cy.wrap($close.first()).click()
+        return
+      }
+    }
+    if (attempt < maxRetries) {
       cy.log(
         `Clusters onboarding modal not found yet (attempt ${attempt}/${maxRetries}); waiting ${retryDelay}ms before retry`,
       )

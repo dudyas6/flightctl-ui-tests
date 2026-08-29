@@ -263,6 +263,113 @@ function registerScaleFleetSimulatorTasks(on) {
     },
 
     /**
+     * Resolves a device's internal hash name from a label selector.
+     * The simulator names devices with opaque hashes, but we track them by label.
+     * Returns the first matching device's metadata.name, or throws if none found.
+     */
+    getDeviceNameByLabel({ labelSelector, timeoutMs = 10000 }) {
+      const flightctlBin = getFlightctlBin()
+      const args = ['get', 'devices', '-l', labelSelector, '-o', 'json']
+      const out = execFileSync(flightctlBin, args, {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+        timeout: timeoutMs,
+      })
+      const data = JSON.parse(out)
+      const items = data.items || []
+      if (items.length === 0) {
+        throw new Error(`No device found with label selector: ${labelSelector}`)
+      }
+      return items[0].metadata.name
+    },
+
+    /**
+     * Patches only status.capabilities.osMode on an existing device via GET/PUT.
+     * The device simulator always reports osMode=package; the catalog deploy wizard
+     * filters out package-based devices, so we flip osMode to "image" after
+     * enrollment so the device appears as a valid deploy target.
+     *
+     * IMPORTANT: stop the simulator BEFORE calling this — otherwise the agent
+     * heartbeat will overwrite the patched osMode back to "package".
+     *
+     * Returns { success: true } or { success: false, error: string }.
+     */
+    async patchDeviceOsMode({ deviceName, osMode = 'image' }) {
+      const configPath = path.join(os.homedir(), '.config', 'flightctl', 'client.yaml')
+      let configContent
+      try {
+        configContent = fs.readFileSync(configPath, 'utf8')
+      } catch (e) {
+        return { success: false, error: `Cannot read flightctl config ${configPath}: ${e.message}` }
+      }
+
+      const { serverUrl, bearerToken, orgId } = parseFlightctlConfig(configContent)
+      if (!serverUrl) return { success: false, error: 'Cannot find service.server in flightctl config' }
+      if (!bearerToken) return { success: false, error: 'Cannot find authentication.access-token in flightctl config' }
+
+      const https = require('https')
+      const parsedUrl = new URL(serverUrl)
+      const hostname = parsedUrl.hostname
+      const port = parseInt(parsedUrl.port || '443', 10)
+      const orgQuery = orgId ? `?org_id=${orgId}` : ''
+
+      const makeReq = (method, reqPath, body) => new Promise((resolve, reject) => {
+        const payload = body ? JSON.stringify(body) : undefined
+        const options = {
+          hostname, port, path: reqPath, method,
+          rejectUnauthorized: false,
+          headers: {
+            Authorization: `Bearer ${bearerToken}`,
+            'Content-Type': 'application/json',
+            'Flightctl-API-Version': 'v1beta1',
+          },
+        }
+        if (payload) options.headers['Content-Length'] = Buffer.byteLength(payload)
+        const req = https.request(options, (res) => {
+          let data = ''
+          res.on('data', (chunk) => { data += chunk })
+          res.on('end', () => resolve({ statusCode: res.statusCode, body: data }))
+        })
+        req.on('error', reject)
+        if (payload) req.write(payload)
+        req.end()
+      })
+
+      const getPath = `/api/v1/devices/${deviceName}${orgQuery}`
+      const statusPath = `/api/v1/devices/${deviceName}/status${orgQuery}`
+
+      const tryPatch = async (attempt) => {
+        const getResp = await makeReq('GET', getPath, null)
+        if (getResp.statusCode !== 200) {
+          return { success: false, error: `GET device (attempt ${attempt}) returned ${getResp.statusCode}: ${getResp.body.slice(0, 300)}` }
+        }
+        let device
+        try { device = JSON.parse(getResp.body) } catch (e) {
+          return { success: false, error: `parse device JSON: ${e.message}` }
+        }
+        if (!device.status) device.status = {}
+        if (!device.status.capabilities) device.status.capabilities = {}
+        device.status.capabilities.osMode = osMode
+        console.log(`[patchDeviceOsMode] Setting ${deviceName} osMode=${osMode} (attempt ${attempt})`)
+
+        const putResp = await makeReq('PUT', statusPath, device)
+        if (putResp.statusCode === 409 && attempt < 3) {
+          return tryPatch(attempt + 1)
+        }
+        if (putResp.statusCode >= 200 && putResp.statusCode < 300) {
+          return { success: true }
+        }
+        return { success: false, error: `PUT /status (attempt ${attempt}) returned ${putResp.statusCode}: ${putResp.body.slice(0, 300)}` }
+      }
+
+      try {
+        return await tryPatch(1)
+      } catch (e) {
+        return { success: false, error: `HTTP request failed: ${e.message}` }
+      }
+    },
+
+    /**
      * Fetches a device's current status subresource and returns it.
      * Used to verify that patchDeviceStatus actually persisted the digest.
      * Returns the status object, or null on error.
@@ -609,9 +716,7 @@ function registerScaleFleetSimulatorTasks(on) {
      */
     scaleFleetCleanup({ fleetName = 'scale-fleet-00', labelSelector = 'fleet=scale-fleet-00' } = {}) {
       const bin = getFlightctlBin()
-      // delete the fleet
       try { execFileSync(bin, ['delete', 'fleet', fleetName], { encoding: 'utf8' }) } catch (_) {}
-      // delete all matching devices via enrollment requests
       try {
         const out = execFileSync(bin, ['get', 'enrollmentrequests', '-o', 'json'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
         const names = (JSON.parse(out).items || []).map((i) => i.metadata && i.metadata.name).filter(Boolean)
