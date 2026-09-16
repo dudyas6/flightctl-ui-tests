@@ -16,6 +16,7 @@ const DEVICE_EVENTS_NORMAL = [
 
 /** Events list body on device details — Events tab */
 const EVENTS_CONTAINER = '[data-testid="device-events-list"]'
+const DEVICE_HEALTH_ALERT = '.pf-v6-c-alert'
 
 /** Device details → Applications table (standalone UI expandable VM/apps table) */
 const DEVICE_APPLICATIONS_TABLE = '#fctl-applications-table'
@@ -51,6 +52,21 @@ const FLEET_DEVICE_SELECTOR_LABELS = {
 
 /** Real `<input>` inside PatternFly TextInputGroup (`#typeahead-select-input` is the wrapper div). */
 const FLEET_LABEL_TYPEAHEAD_INPUT = '#typeahead-select-input input'
+
+const deviceInformationCard = (timeout = 120000) =>
+  cy.get('.pf-v6-c-card', { timeout })
+    .filter((_, card) =>
+      Cypress.$(card).find('.pf-v6-c-card__title-text').text().includes('Device information'),
+    )
+    .first()
+
+const deviceFleetDescription = (timeout = 120000) =>
+  deviceInformationCard(timeout)
+    .find('.pf-v6-c-description-list__group')
+    .filter((_, group) =>
+      Cypress.$(group).find('.pf-v6-c-description-list__term').text().trim() === 'Fleet',
+    )
+    .find('.pf-v6-c-description-list__description')
 
 /**
  * Syslog priority levels mapped to their UI dropdown labels.
@@ -394,6 +410,10 @@ export const devicesPage = {
               .find('[data-testid^="device-update-status-"]')
               .contains('Out-of-date')
               .should('be.visible')
+            enrolledDeviceLinkByAlias(deviceName).click()
+            cy.get('[data-testid="device-details-title"]', { timeout: 30000 }).should('be.visible')
+            devicesPage.expectIssuesDetectedAlert()
+            devicesPage.clickStatusIssuesLink()
           } else if (attempt + 1 < maxAttempts) {
             pollForOutOfDate(attempt + 1)
           } else {
@@ -628,13 +648,11 @@ export const devicesPage = {
       .click({ force: true })
     cy.get('[data-testid="device-details-title"]', { timeout: 120000 }).should('be.visible')
     cy.get('[data-testid="device-details-tab-details"]').should('be.visible')
-    cy.contains('.fctl-device-details-tab__label', 'Fleet name', { timeout: 60000 })
-      .closest('.pf-v6-l-stack')
+    deviceFleetDescription(60000)
       .find('.fctl-resource-link__text', { timeout: 60000 })
       .invoke('text')
       .as('expectedFleetName')
-    cy.contains('.fctl-device-details-tab__label', 'Fleet name')
-      .closest('.pf-v6-l-stack')
+    deviceFleetDescription(60000)
       .should('not.contain', 'None')
 
     cy.get('@expectedFleetName').then((fleetName) => {
@@ -666,15 +684,33 @@ export const devicesPage = {
   },
 
   expectDeviceDetailsFleetConnected: (fleetName = SCALE_FLEET_NAME) => {
-    cy.contains('.fctl-device-details-tab__label', 'Fleet name', { timeout: 120000 })
-      .closest('.pf-v6-l-stack')
+    deviceFleetDescription(120000)
       .should('contain', fleetName)
   },
 
   expectDeviceDetailsFleetDisconnected: () => {
-    cy.contains('.fctl-device-details-tab__label', 'Fleet name', { timeout: 120000 })
-      .closest('.pf-v6-l-stack')
+    deviceFleetDescription(120000)
       .should('contain', 'None')
+  },
+
+  expectIssuesDetectedAlert: (statusCount) => {
+    const statusIssuePattern = statusCount === undefined
+      ? /\d+ status issue/
+      : new RegExp(String(statusCount) + ' status issue')
+    cy.contains(DEVICE_HEALTH_ALERT, 'Issues detected', { timeout: 30000 })
+      .should('be.visible')
+      .contains('button', statusIssuePattern)
+      .should('be.visible')
+  },
+
+  clickStatusIssuesLink: (statusCount) => {
+    const statusIssuePattern = statusCount === undefined
+      ? /\d+ status issue/
+      : new RegExp(String(statusCount) + ' status issue')
+    cy.contains(DEVICE_HEALTH_ALERT, 'Issues detected', { timeout: 30000 })
+      .contains('button', statusIssuePattern)
+      .click()
+    cy.get('#device-status-card').should('be.visible')
   },
 
   removeFleetLabelOnDeviceDetails: (labelText = SCALE_FLEET_LABEL_TEXT) => {

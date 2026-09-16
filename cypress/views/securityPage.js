@@ -5,8 +5,7 @@ import { common } from './common'
  * Used across Device, Fleet, and Overview pages.
  */
 
-/** Security overview card title */
-const SECURITY_OVERVIEW_CARD = '.pf-v6-c-card__title-text:contains("Security overview")'
+const SECURITY_OVERVIEW_TOGGLE = 'button[aria-label="Toggle security details"]'
 
 /** Filter by severity dropdown button */
 const SEVERITY_FILTER_TOGGLE = 'button[aria-label="Filter by severity"]'
@@ -71,6 +70,35 @@ export const CLEAN_IMAGE = {
 }
 
 export const securityPage = {
+  getSecurityOverviewCard(timeout = 30000) {
+    return cy.get('.pf-v6-c-card', { timeout })
+      .filter((_, el) =>
+        Cypress.$(el).find('.pf-v6-c-card__title-text').text().includes('Security overview'),
+      )
+      .first()
+  },
+
+  /**
+   * Entity security cards are collapsed by default in the redesigned device/fleet page.
+   * The overview page has no toggle, so this is intentionally a no-op there.
+   */
+  ensureEntitySecurityOverviewExpanded(timeout = 30000) {
+    this.getSecurityOverviewCard(timeout).then(($card) => {
+      const toggle = $card.find(SECURITY_OVERVIEW_TOGGLE)
+      if (!toggle.length) return
+      if (toggle.attr('aria-expanded') !== 'true') {
+        cy.wrap(toggle).click()
+      }
+    })
+    this.getSecurityOverviewCard(timeout)
+      .find(SECURITY_OVERVIEW_TOGGLE)
+      .then(($toggle) => {
+        if ($toggle.length) {
+          cy.wrap($toggle).should('have.attr', 'aria-expanded', 'true')
+        }
+      })
+  },
+
   /**
    * Verify the security overview card is visible
    * Scrolls to the security overview section if needed
@@ -82,15 +110,9 @@ export const securityPage = {
     // Pre-scroll the page to the bottom so the Security overview card (below the fold on ACM
     // pages) is in the rendered viewport before we query for .pf-v6-c-card elements.
     cy.scrollTo('bottom', { ensureScrollable: false })
-    cy.get('.pf-v6-c-card', { timeout: 30000 })
-      .should(($cards) => {
-        const card = $cards.filter((_, el) =>
-          Cypress.$(el).find('.pf-v6-c-card__title-text').text().includes('Security overview')
-        )
-        expect(card.length, 'Security overview card should exist').to.be.gt(0)
-        card[0].scrollIntoView({ behavior: 'instant', block: 'end' })
-        expect(Cypress.$(card[0]).is(':visible'), 'Security overview card should be visible').to.be.true
-      })
+    this.getSecurityOverviewCard()
+      .scrollIntoView({ behavior: 'instant', block: 'end' })
+      .should('be.visible')
   },
 
   /**
@@ -112,6 +134,7 @@ export const securityPage = {
    *   "0 CVEs" check at test start where no waiting is needed.
    */
   expectVulnerabilityCount(count, timeout = 90000) {
+    this.ensureEntitySecurityOverviewExpanded(timeout)
     if (count === 0) {
       // Everything (card search, scroll, text assertion) inside one .should() so Cypress
       // retries the whole block on every tick within `timeout`. If we chain .contains() off
@@ -175,43 +198,39 @@ export const securityPage = {
   },
 
   /**
-   * Verify severity breakdown counts.
-   *
-   * Only meaningful on the Overview page, which renders SecurityOverviewSummary with
-   * per-severity stat boxes (.fctl-security-overview-summary-box.{severity}).
-   * Device and Fleet pages show only the CVE table — there are no severity stat boxes
-   * there, so this function is a no-op on those pages.
-   *
-   * Exact counts are checked because the test controls which device has which digest
-   * via patchDeviceStatus, so the system-wide Overview totals reflect only the test device.
+   * Verify severity breakdown counts on the Overview and redesigned entity cards.
    *
    * @param {object} counts - Object with critical, high, medium, low counts
    */
   expectSeverityCounts(counts) {
-    cy.get('.pf-v6-c-card').contains('.pf-v6-c-card__title-text', 'Security overview')
-      .parents('.pf-v6-c-card')
-      .then(($card) => {
-        if (!$card.text().includes('Total active vulnerabilities')) {
-          // Device/Fleet page — no severity stat boxes, nothing to verify here.
-          cy.log('expectSeverityCounts: no severity summary on this page, skipping')
-          return
-        }
+    this.ensureEntitySecurityOverviewExpanded()
+    this.getSecurityOverviewCard().then(($card) => {
+      const isEntityCard = $card.find(SECURITY_OVERVIEW_TOGGLE).length > 0
+      const scope = cy.wrap($card)
 
-        // Overview page: each severity stat box contains the exact count and the display label.
-        // The test controls the digest via patchDeviceStatus so the counts match exactly.
-        // The UI maps API severity to Red Hat display names: High → "Important", Medium → "Moderate".
-        const checkBox = (cssClass, count, displayLabel) => {
-          if (count > 0) {
-            cy.get(`.fctl-security-overview-summary-box.${cssClass}`)
-              .should('contain.text', count.toString())
-              .and('contain.text', displayLabel)
-          }
+      // Keep the existing calls and validate both the Overview and redesigned
+      // device/fleet card variants.
+      const checkBox = (cssClass, count, displayLabel) => {
+        if (count > 0) {
+          scope.find('.fctl-security-overview-summary-box.' + cssClass).within(() => {
+            cy.get('strong').should('have.text', String(count))
+            cy.contains(displayLabel).should('be.visible')
+          })
         }
-        checkBox('critical', counts.critical, 'Critical')
-        checkBox('high', counts.high, 'Important')
-        checkBox('medium', counts.medium, 'Moderate')
-        checkBox('low', counts.low, 'Low')
-      })
+      }
+
+      checkBox('critical', counts.critical, 'Critical')
+      checkBox('high', counts.high, 'Important')
+      checkBox('medium', counts.medium, 'Moderate')
+      checkBox('low', counts.low, 'Low')
+
+      if (isEntityCard) {
+        scope.find(SECURITY_OVERVIEW_TOGGLE + '[aria-expanded="true"]').should('exist')
+        scope.find('.fctl-security-overview-summary-box[role="button"]').should('exist')
+      } else {
+        scope.contains('Total active vulnerabilities').should('be.visible')
+      }
+    })
   },
 
   /**
@@ -471,6 +490,7 @@ export const securityPage = {
    * @param {Function} opts.beforeReload - Optional Cypress command chain to run before reload (e.g. re-patch device status)
    */
   waitForVulnerabilityCountWithReload(count, { firstWaitMs = 60000, reloadWaitMs = 120000, beforeReload = null } = {}) {
+    this.ensureEntitySecurityOverviewExpanded()
     // Helper: check whether the Security overview card currently shows the expected CVE count.
     // Runs synchronously inside a Cypress .then() / .should() callback.
     const isCveCountVisible = ($cards) => {
