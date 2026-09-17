@@ -77,8 +77,14 @@ export const fleetsPage = {
     cy.get('[data-testid="toolbar-create-fleet"]').first().click()
     cy.get('[data-testid="rich-validation-field-name"]').should('be.visible')
     cy.get('[data-testid="rich-validation-field-name"]').type(fleetname)
-    cy.get('[data-testid="rich-validation-field-name"]').should('have.value', 'test-fleet')
-    cy.get('.pf-v6-l-stack__item > .pf-v6-c-label-group > .pf-v6-c-label-group__main > .pf-v6-c-label-group__list').click()
+    cy.get('[data-testid="rich-validation-field-name"]').should('have.value', fleetname)
+    cy.contains('.pf-v6-c-form__label-text', 'Device selector')
+      .parents('.pf-v6-c-form__group')
+      .find('button[aria-label="Add label"]')
+      .should('be.visible')
+      .click()
+    cy.get('input[aria-label="New label"]').should('be.visible').clear().type(`fleet=${fleetname}{enter}`)
+    cy.contains('.pf-v6-c-label', `fleet=${fleetname}`).should('be.visible')
     cy.get('[data-testid="wizard-next-button"]').click()
     cy.get('[data-testid="textfield-osSpec"]').should('be.visible')
     cy.get('[data-testid="textfield-osSpec"]').type(img)
@@ -86,6 +92,7 @@ export const fleetsPage = {
     cy.get('[data-testid="wizard-next-button"]').click()
     cy.get('[data-testid="wizard-next-button"]').click()
     cy.get('[data-testid="wizard-save-button"]').click()
+    cy.url().should('include', `/devicemanagement/fleets/${fleetname}`)
   },
 
   /**

@@ -103,18 +103,13 @@ export const securityPage = {
   ensureEntitySecurityOverviewExpanded(timeout = 30000) {
     this.getSecurityOverviewCard(timeout).then(($card) => {
       const toggle = $card.find(SECURITY_OVERVIEW_TOGGLE)
-      if (!toggle.length) return
-      if (toggle.attr('aria-expanded') !== 'true') {
-        cy.wrap(toggle).click()
+      if (toggle.length) {
+        if (toggle.attr('aria-expanded') !== 'true') {
+          cy.wrap(toggle).click()
+        }
+        cy.wrap(toggle).should('have.attr', 'aria-expanded', 'true')
       }
     })
-    this.getSecurityOverviewCard(timeout)
-      .find(SECURITY_OVERVIEW_TOGGLE)
-      .then(($toggle) => {
-        if ($toggle.length) {
-          cy.wrap($toggle).should('have.attr', 'aria-expanded', 'true')
-        }
-      })
   },
 
   /**
@@ -224,16 +219,24 @@ export const securityPage = {
     this.ensureEntitySecurityOverviewExpanded()
     this.getSecurityOverviewCard().then(($card) => {
       const isEntityCard = $card.find(SECURITY_OVERVIEW_TOGGLE).length > 0
-      const scope = cy.wrap($card)
 
       // Keep the existing calls and validate both the Overview and redesigned
       // device/fleet card variants.
       const checkBox = (cssClass, count, displayLabel) => {
         if (count > 0) {
-          scope.find('.fctl-security-overview-summary-box.' + cssClass).within(() => {
-            cy.get('strong').should('have.text', String(count))
-            cy.contains(displayLabel).should('be.visible')
-          })
+          const severityTile = $card.find(
+            `[aria-label="${displayLabel}"], ` +
+            `[aria-label="Filter table by ${displayLabel} severity"], ` +
+            `.fctl-security-overview-summary-box.${cssClass}`,
+          )
+          expect(severityTile.length, `${displayLabel} severity tile should exist`).to.be.gt(0)
+          cy.wrap(severityTile.first())
+            .scrollIntoView({ behavior: 'instant', block: 'center' })
+            .should('be.visible')
+            .within(() => {
+              cy.get('strong').should('have.text', String(count))
+              cy.contains(displayLabel).should('be.visible')
+            })
         }
       }
 
@@ -245,10 +248,10 @@ export const securityPage = {
       checkBox('unknown', counts.unknown, 'Undefined')
 
       if (isEntityCard) {
-        scope.find(SECURITY_OVERVIEW_TOGGLE + '[aria-expanded="true"]').should('exist')
-        scope.find('.fctl-security-overview-summary-box[role="button"]').should('exist')
+        cy.wrap($card).find(SECURITY_OVERVIEW_TOGGLE + '[aria-expanded="true"]').should('exist')
+        cy.wrap($card).find('.fctl-security-overview-summary-box[role="button"]').should('exist')
       } else {
-        scope.contains('Total active vulnerabilities').should('be.visible')
+        cy.wrap($card).contains('Total active vulnerabilities').should('be.visible')
       }
     })
   },
