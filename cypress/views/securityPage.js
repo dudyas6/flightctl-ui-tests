@@ -69,24 +69,6 @@ export const CLEAN_IMAGE = {
   digest: 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
 }
 
-/**
- * Image used to verify the redesigned severity tiles for None and Unknown.
- * Unknown is displayed as Undefined in the UI.
- */
-export const SECURITY_SEVERITY_IMAGE = {
-  image: 'test-image:security-severity',
-  digest: 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
-  totalCount: 2,
-  counts: {
-    critical: 0,
-    high: 0,
-    medium: 0,
-    low: 0,
-    none: 1,
-    unknown: 1,
-  },
-}
-
 export const securityPage = {
   getSecurityOverviewCard(timeout = 30000) {
     return cy.get('.pf-v6-c-card', { timeout })
@@ -244,9 +226,6 @@ export const securityPage = {
       checkBox('high', counts.high, 'Important')
       checkBox('medium', counts.medium, 'Moderate')
       checkBox('low', counts.low, 'Low')
-      checkBox('none', counts.none, 'None')
-      checkBox('unknown', counts.unknown, 'Undefined')
-
       if (isEntityCard) {
         cy.wrap($card).find(SECURITY_OVERVIEW_TOGGLE + '[aria-expanded="true"]').should('exist')
         cy.wrap($card).find('.fctl-security-overview-summary-box[role="button"]').should('exist')

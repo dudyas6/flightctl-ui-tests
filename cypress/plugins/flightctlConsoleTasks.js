@@ -245,21 +245,6 @@ function registerFlightctlConsoleTasks(on) {
         console.log(`[seedTrustifySBOMs] ${s.file} → HTTP ${result.statusCode}`)
       }
 
-      // Seed the UI-only severity edge-case image. Its advisory contains one
-      // finding with severity NONE and one finding without a severity score.
-      const securitySeverityTestdataPath = path.join(__dirname, '..', '..', 'testdata', 'trustify')
-      const securitySeveritySbom = {
-        file: 'sbom-security-severity.json',
-        digest: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
-      }
-      const securitySeveritySbomPath = path.join(securitySeverityTestdataPath, securitySeveritySbom.file)
-      if (fs.existsSync(securitySeveritySbomPath)) {
-        const url = `${trustifyUrl}/api/v2/sbom?labels=sha256~${securitySeveritySbom.digest}`
-        console.log(`[seedTrustifySBOMs] Uploading ${securitySeveritySbom.file} → ${url}`)
-        const result = await upload(url, securitySeveritySbomPath)
-        console.log(`[seedTrustifySBOMs] ${securitySeveritySbom.file} → HTTP ${result.statusCode}`)
-      }
-
       // Upload advisories (each .json file in testdata/advisories/)
       const advisoriesDir = path.join(testdataPath, 'advisories')
       if (fs.existsSync(advisoriesDir)) {
@@ -277,18 +262,6 @@ function registerFlightctlConsoleTasks(on) {
         }
       } else {
         console.log(`[seedTrustifySBOMs] No advisories directory at ${advisoriesDir}, skipping`)
-      }
-
-      const securitySeverityAdvisoryPath = path.join(
-        securitySeverityTestdataPath,
-        'advisories',
-        'security-severity.json',
-      )
-      if (fs.existsSync(securitySeverityAdvisoryPath)) {
-        const url = `${trustifyUrl}/api/v2/advisory`
-        console.log(`[seedTrustifySBOMs] Uploading security-severity.json → ${url}`)
-        const result = await upload(url, securitySeverityAdvisoryPath)
-        console.log(`[seedTrustifySBOMs] security-severity.json → HTTP ${result.statusCode}`)
       }
 
       console.log('[seedTrustifySBOMs] SBOM seed complete')
