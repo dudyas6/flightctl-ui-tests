@@ -78,14 +78,11 @@ export const fleetsPage = {
     cy.get('[data-testid="rich-validation-field-name"]').should('be.visible')
     cy.get('[data-testid="rich-validation-field-name"]').type(fleetname)
     cy.get('[data-testid="rich-validation-field-name"]').should('have.value', fleetname)
-    cy.contains('.pf-v6-c-form__label-text', 'Device selector')
-      .parents('.pf-v6-c-form__group')
-      .find('button[aria-label="Add label"]')
-      .should('be.visible')
-      .click()
-    cy.get('input[aria-label="New label"]').should('be.visible').clear().type(`fleet=${fleetname}{enter}`)
-    cy.contains('.pf-v6-c-label', `fleet=${fleetname}`).should('be.visible')
-    cy.get('[data-testid="wizard-next-button"]').click()
+    // Blur the name field so Formik validates. OCP 4.20 clicked the LabelGroup list
+    // (removed in newer PF / EditableLabelControl). Do not add a selector label here —
+    // createFleet historically submitted with an empty device selector.
+    cy.get('[data-testid="rich-validation-field-name"]').blur()
+    cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
     cy.get('[data-testid="textfield-osSpec"]').should('be.visible')
     cy.get('[data-testid="textfield-osSpec"]').type(img)
     cy.get('[data-testid="textfield-osSpec"]').should('have.value', img)
@@ -103,7 +100,7 @@ export const fleetsPage = {
     
     cy.get(`[data-testid="fleet-row-actions-${fleetname}"] .pf-v6-c-menu-toggle`).should('be.visible').click()
     cy.contains('.pf-v6-c-menu__item-text', 'Edit fleet configurations').should('be.visible').click()
-    cy.get(':nth-child(1) > .pf-v6-c-form__group-label > .pf-v6-c-form__label > .pf-v6-c-form__label-text').should('contain', 'Fleet name')
+    cy.get('.pf-v6-c-form__label-text').first().should('contain', 'Fleet name')
     cy.get('[data-testid="wizard-next-button"]').click()
     cy.get('[data-testid="textfield-osSpec"]').should('be.visible')
     cy.get('[data-testid="textfield-osSpec"]').clear()
@@ -121,8 +118,8 @@ export const fleetsPage = {
   deleteFleet: (fleetname = Cypress.env('fleetname')) => {
     common.navigateTo('Fleets')
     
-    cy.get('[data-label="Name"]').contains(fleetname)
-    cy.get('.pf-v6-c-table__tbody > .pf-v6-c-table__tr > .pf-v6-c-table__check > label > input').click()
+    cy.contains('td', fleetname, { timeout: 10000 }).should('be.visible')
+    cy.contains('td', fleetname).closest('tr').find('input[type="checkbox"]').click()
     cy.get('[data-testid="toolbar-delete-fleets"]').should('be.visible')
     cy.get('[data-testid="toolbar-delete-fleets"]').click()
     cy.get('[data-testid="modal-delete-fleets-confirm"]').should('be.visible')

@@ -2,6 +2,23 @@
  * Common utilities for test operations
  */
 
+/**
+ * Device details "Fleet" field. Newer flightctl-ui (OCP 4.22) uses a DescriptionList
+ * term labeled "Fleet"; OCP 4.20 still uses `.fctl-device-details-tab__label` + "Fleet name".
+ * Returns a chainable scoped to the field's parent row.
+ */
+export const deviceDetailsFleetRow = (timeout = 60000) => {
+  const termOrLegacyLabel = [
+    'dt.pf-v6-c-description-list__term',
+    '.fctl-device-details-tab__label',
+  ].join(', ')
+  const row = [
+    '.pf-v6-c-description-list__group',
+    '.pf-v6-l-stack',
+  ].join(', ')
+  return cy.contains(termOrLegacyLabel, /^(Fleet name|Fleet)$/, { timeout }).closest(row)
+}
+
 /** True after org selection was handled or confirmed absent — only run once per spec (first navigateTo). */
 let organizationSelectionHandled = false
 
