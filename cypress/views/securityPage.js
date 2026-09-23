@@ -6,7 +6,8 @@ import { common } from './common'
  */
 
 /** Security overview card title */
-const SECURITY_OVERVIEW_CARD = '.pf-v6-c-card__title-text:contains("Security overview")'
+const SECURITY_OVERVIEW_CARD =
+  '.pf-v6-c-card__title-text:contains("Security overview")'
 
 /** Filter by severity dropdown button */
 const SEVERITY_FILTER_TOGGLE = 'button[aria-label="Filter by severity"]'
@@ -25,6 +26,13 @@ const NO_VULNERABILITIES_EMPTY_STATE = '.pf-v6-c-empty-state'
 
 /** CVE details panel/drawer (when clicking on a CVE) */
 const CVE_DETAILS_PANEL = '[role="dialog"], .pf-v6-c-drawer__panel'
+const CVE_DETAILS_DRAWER =
+  '.pf-v6-c-drawer__panel:has(button[aria-label="Close drawer panel"])'
+const CARD = '.pf-v6-c-card'
+const CARD_TITLE = '.pf-v6-c-card__title-text'
+const MENU_ITEM = '.pf-v6-c-menu li'
+const CHIP_GROUP_CLOSE = '.pf-v6-c-chip-group__close button'
+const EXPANDABLE_ROW = '.pf-v6-c-table__expandable-row'
 
 /** Close button for CVE details */
 const CLOSE_DETAILS_BUTTON = 'button[aria-label="Close drawer panel"]'
@@ -94,6 +102,27 @@ export const securityPage = {
   },
 
   /**
+   * Expand EntitySecurityOverviewCard on Device/Fleet pages (collapsed by default in
+   * current flightctl-ui). Overview page has no toggle — this is a no-op there.
+   */
+  _expandSecurityCardIfNeeded(timeout = 15000) {
+    cy.scrollTo('bottom', { ensureScrollable: false })
+    cy.get(CARD, { timeout }).then(($cards) => {
+      const card = $cards.filter((_, el) =>
+        Cypress.$(el).find(CARD_TITLE).text().includes('Security overview'),
+      )
+      if (!card.length) {
+        return
+      }
+      const toggle = card.find('button[aria-label="Toggle security details"]')
+      if (toggle.length > 0 && toggle.attr('aria-expanded') !== 'true') {
+        cy.wrap(toggle).click()
+        cy.wait(500)
+      }
+    })
+  },
+
+  /**
    * Verify vulnerability count is displayed.
    *
    * Behaviour depends on which page type the selector lands on:
@@ -112,6 +141,7 @@ export const securityPage = {
    *   "0 CVEs" check at test start where no waiting is needed.
    */
   expectVulnerabilityCount(count, timeout = 90000) {
+    this._expandSecurityCardIfNeeded(Math.min(timeout, 30000))
     if (count === 0) {
       // Everything (card search, scroll, text assertion) inside one .should() so Cypress
       // retries the whole block on every tick within `timeout`. If we chain .contains() off
@@ -137,7 +167,14 @@ export const securityPage = {
             text.includes('0') &&
             (text.includes('Total active vulnerabilities') ||
              text.includes('total active vulnerabilities'))
-          expect(hasNoVulnState || hasZeroTotal, 'Should show 0 vulnerabilities').to.be.true
+          const severityGrid = card.first().find('[aria-label="Vulnerability counts by severity"]')
+          const hasSeverityTilesAllZero =
+            severityGrid.length > 0 &&
+            severityGrid
+              .find('.pf-v6-u-font-size-xl strong')
+              .toArray()
+              .every((el) => el.textContent.trim() === '0')
+          expect(hasNoVulnState || hasZeroTotal || hasSeverityTilesAllZero, 'Should show 0 vulnerabilities').to.be.true
         })
     } else {
       // scroll + assert inside one .should() so the timeout covers the whole retry loop
@@ -166,9 +203,19 @@ export const securityPage = {
             // each CVE has a companion <tr class="pf-v6-c-table__expandable-row"> that also
             // contains td[data-label] elements, doubling the count without this exclusion.
             const cveRows = card.first().find(
-              'table[aria-label="Vulnerabilities table"] tbody tr:not(.pf-v6-c-table__expandable-row) td[data-label]'
+              `table[aria-label="Vulnerabilities table"] tbody tr:not(${EXPANDABLE_ROW}) td[data-label]`
             ).closest('tr')
-            expect(cveRows.length, `Expected ${count} CVE rows in vulnerability table`).to.equal(count)
+            if (cveRows.length > 0) {
+              expect(cveRows.length, `Expected ${count} CVE rows in vulnerability table`).to.equal(count)
+            } else {
+              const severityGrid = card.first().find('[aria-label="Vulnerability counts by severity"]')
+              expect(severityGrid.length, 'Severity summary grid should exist').to.be.gt(0)
+              const total = severityGrid
+                .find('.pf-v6-u-font-size-xl strong')
+                .toArray()
+                .reduce((sum, el) => sum + parseInt(el.textContent.trim() || '0', 10), 0)
+              expect(total, `Expected severity tiles to sum to ${count}`).to.equal(count)
+            }
           }
         })
     }
@@ -188,8 +235,9 @@ export const securityPage = {
    * @param {object} counts - Object with critical, high, medium, low counts
    */
   expectSeverityCounts(counts) {
-    cy.get('.pf-v6-c-card').contains('.pf-v6-c-card__title-text', 'Security overview')
-      .parents('.pf-v6-c-card')
+    this._expandSecurityCardIfNeeded()
+    cy.get(CARD).contains(CARD_TITLE, 'Security overview')
+      .parents(CARD)
       .then(($card) => {
         if (!$card.text().includes('Total active vulnerabilities')) {
           // Device/Fleet page — no severity stat boxes, nothing to verify here.
@@ -258,7 +306,7 @@ export const securityPage = {
   expectCveDrawerContent(cveId, severityLabel) {
     // ACM mode keeps a persistent .pf-v6-c-drawer__panel in the DOM. Scope to the CVE details
     // panel specifically by requiring it to contain the drawer close button.
-    cy.get('.pf-v6-c-drawer__panel:has(button[aria-label="Close drawer panel"])').within(() => {
+    cy.get(CVE_DETAILS_DRAWER).within(() => {
       cy.contains('h3', cveId).should('be.visible')
       cy.contains('Severity').should('be.visible')
       cy.contains(severityLabel).should('be.visible')
@@ -274,7 +322,7 @@ export const securityPage = {
     // The CVE drawer (FlightCtlPageDrawer) is fully unmounted on close — the portal
     // disappears. Assert the scoped panel is gone rather than [role="dialog"], since
     // ACM may keep other role=dialog elements in the DOM at all times.
-    cy.get('.pf-v6-c-drawer__panel:has(button[aria-label="Close drawer panel"])', { timeout: 15000 }).should('not.exist')
+    cy.get(CVE_DETAILS_DRAWER, { timeout: 15000 }).should('not.exist')
   },
 
   /**
@@ -319,7 +367,7 @@ export const securityPage = {
     // Guards against the 10s useFetchPeriodically refetch that sets isUpdating=true and
     // temporarily replaces rows with a spinner, causing a 0-row false negative on filter apply.
     cy.get(VULNERABILITIES_TABLE, { timeout: 30000 }).should(($table) => {
-      const rows = $table.find('tbody tr:not(.pf-v6-c-table__expandable-row) td[data-label]').closest('tr')
+      const rows = $table.find(`tbody tr:not(${EXPANDABLE_ROW}) td[data-label]`).closest('tr')
       expect(rows.length, 'Table should have rows before filtering').to.be.gt(0)
     })
 
@@ -333,7 +381,7 @@ export const securityPage = {
     // Scope to .pf-v6-c-menu to avoid matching ACM sidebar <li> elements (those are inside
     // .pf-v6-c-page__sidebar). Do NOT use force:true — a real click is needed so React's synthetic
     // onClick on SelectOption fires toggleSeverityFilter.
-    cy.contains('.pf-v6-c-menu li', severityDisplayLabel).should('be.visible').click()
+    cy.contains(MENU_ITEM, severityDisplayLabel).should('be.visible').click()
     // Close the popup. shouldFocusToggleOnSelect returns focus to the toggle, which may auto-close
     // it. Conditionally click to close only if still open — avoids double-toggling.
     cy.get(SEVERITY_FILTER_TOGGLE, { timeout: 5000 }).then(($btn) => {
@@ -351,7 +399,7 @@ export const securityPage = {
       // then the table. Wait up to 30s for the table to have the expected non-empty tbody count.
       cy.get(VULNERABILITIES_TABLE, { timeout: 30000 }).should('exist')
       cy.get(VULNERABILITIES_TABLE, { timeout: 30000 }).should(($table) => {
-        const cveRows = $table.find('tbody tr:not(.pf-v6-c-table__expandable-row) td[data-label]').closest('tr')
+        const cveRows = $table.find(`tbody tr:not(${EXPANDABLE_ROW}) td[data-label]`).closest('tr')
         expect(cveRows.length, `Expected ${expectedCount} filtered CVE rows`).to.equal(expectedCount)
       })
     }
@@ -359,7 +407,7 @@ export const securityPage = {
     // Deselect the filter (toggle it off), then wait for the table to settle before returning.
     cy.get(SEVERITY_FILTER_TOGGLE).should('be.visible').click()
     cy.get(SEVERITY_FILTER_TOGGLE).should('have.attr', 'aria-expanded', 'true')
-    cy.contains('.pf-v6-c-menu li', severityDisplayLabel).should('be.visible').click()
+    cy.contains(MENU_ITEM, severityDisplayLabel).should('be.visible').click()
     cy.get(SEVERITY_FILTER_TOGGLE, { timeout: 5000 }).then(($btn) => {
       if ($btn.attr('aria-expanded') === 'true') {
         cy.wrap($btn).click()
@@ -378,8 +426,8 @@ export const securityPage = {
     cy.get('body').then(($body) => {
       if ($body.find('button:contains("Clear all filters")').length > 0) {
         cy.contains('button', 'Clear all filters').click()
-      } else if ($body.find('.pf-v6-c-chip-group__close button').length > 0) {
-        cy.get('.pf-v6-c-chip-group__close button').click()
+      } else if ($body.find(CHIP_GROUP_CLOSE).length > 0) {
+        cy.get(CHIP_GROUP_CLOSE).click()
       }
     })
   },
@@ -420,7 +468,7 @@ export const securityPage = {
     } else {
       cy.get(VULNERABILITIES_TABLE, { timeout }).should('exist')
       cy.get(VULNERABILITIES_TABLE).should(($table) => {
-        const cveRows = $table.find('tbody tr:not(.pf-v6-c-table__expandable-row) td[data-label]').closest('tr')
+        const cveRows = $table.find(`tbody tr:not(${EXPANDABLE_ROW}) td[data-label]`).closest('tr')
         expect(cveRows.length, `Expected ${expectedCount} CVE rows`).to.equal(expectedCount)
       })
     }
@@ -471,38 +519,42 @@ export const securityPage = {
    * @param {Function} opts.beforeReload - Optional Cypress command chain to run before reload (e.g. re-patch device status)
    */
   waitForVulnerabilityCountWithReload(count, { firstWaitMs = 60000, reloadWaitMs = 120000, beforeReload = null } = {}) {
-    // Helper: check whether the Security overview card currently shows the expected CVE count.
-    // Runs synchronously inside a Cypress .then() / .should() callback.
+    this._expandSecurityCardIfNeeded()
     const isCveCountVisible = ($cards) => {
       const card = $cards.filter((_, el) =>
-        Cypress.$(el).find('.pf-v6-c-card__title-text').text().includes('Security overview')
+        Cypress.$(el).find(CARD_TITLE).text().includes('Security overview'),
       )
       if (!card.length) return false
       card[0].scrollIntoView({ behavior: 'instant', block: 'end' })
       const $c = card.first()
       const text = $c.text()
+      const severityGrid = $c.find('[aria-label="Vulnerability counts by severity"]')
+      const severityTotal = severityGrid
+        .find('.pf-v6-u-font-size-xl strong')
+        .toArray()
+        .reduce((sum, el) => sum + parseInt(el.textContent.trim() || '0', 10), 0)
       if (count === 0) {
-        return (
+        const hasEmptyCopy =
           text.includes('No vulnerabilities detected') ||
           text.includes('No vulnerabilities were found') ||
           text.includes('No CVEs detected') ||
           text.includes('No vulnerability data to display') ||
           (text.includes('0') && text.includes('Total active vulnerabilities'))
-        )
+        const tilesAllZero =
+          severityGrid.length > 0 &&
+          severityGrid
+            .find('.pf-v6-u-font-size-xl strong')
+            .toArray()
+            .every((el) => el.textContent.trim() === '0')
+        return hasEmptyCopy || tilesAllZero
       } else if (text.includes('Total active vulnerabilities')) {
-        // Overview page: the count is in a large-font element whose text is exactly the number.
-        // text.includes(count) is too loose and false-positives on any digit in the card.
         const countText = $c.find('.pf-v6-u-font-size-4xl').text().trim()
         return countText === count.toString()
-      } else {
-        // Device / Fleet page: count actual CVE rows (tr elements whose td has data-label).
-        // Exclude expandable-row siblings — the Fleet table uses PF6 expandable rows where
-        // each CVE has a companion tr.pf-v6-c-table__expandable-row that doubles the count.
-        const cveRows = $c.find(
-          'table[aria-label="Vulnerabilities table"] tbody tr:not(.pf-v6-c-table__expandable-row) td[data-label]'
-        ).closest('tr')
-        return cveRows.length === count
       }
+      const cveRows = $c
+        .find(`table[aria-label="Vulnerabilities table"] tbody tr:not(${EXPANDABLE_ROW}) td[data-label]`)
+        .closest('tr')
+      return cveRows.length === count || (severityGrid.length > 0 && severityTotal === count)
     }
 
     // Phase 1: poll the live DOM for up to firstWaitMs. The UI's 10s auto-fetch cycle
@@ -522,7 +574,7 @@ export const securityPage = {
     // cy.get uses a 15s timeout so the card has time to appear after ACM page loads
     // (default 4s is too short for ACM/headless mode).
     const poll = (remaining) => {
-      cy.get('.pf-v6-c-card', { timeout: 15000 }).then(($cards) => {
+      cy.get(CARD, { timeout: 15000 }).then(($cards) => {
         if (isCveCountVisible($cards)) {
           cy.log(`✓ CVE count ${count} reached — no reload needed`)
           return

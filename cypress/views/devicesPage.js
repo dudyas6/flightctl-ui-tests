@@ -1,4 +1,4 @@
-import { common } from './common'
+import { common, deviceDetailsFleetRow } from './common'
 
 /** Default table row index for flows that assume a single primary device row */
 const ROW_0 = 0
@@ -17,8 +17,9 @@ const DEVICE_EVENTS_NORMAL = [
 /** Events list body on device details — Events tab */
 const EVENTS_CONTAINER = '[data-testid="device-events-list"]'
 
-/** Device details → Applications table (standalone UI expandable VM/apps table) */
-const DEVICE_APPLICATIONS_TABLE = '#fctl-applications-table'
+/** Device details → Applications table (id on 4.20; 4.22 also has the card + aria-label). */
+const DEVICE_APPLICATIONS_TABLE =
+  '#fctl-applications-table, #device-applications-card table, table[aria-label="Applications"]'
 
 /** Device details → Terminal tab → VM serial console (Open console) */
 const APP_CONSOLE_TERMINAL = '[data-testid="app-console-terminal"]'
@@ -628,14 +629,14 @@ export const devicesPage = {
       .click({ force: true })
     cy.get('[data-testid="device-details-title"]', { timeout: 120000 }).should('be.visible')
     cy.get('[data-testid="device-details-tab-details"]').should('be.visible')
-    cy.contains('.fctl-device-details-tab__label', 'Fleet name', { timeout: 60000 })
-      .closest('.pf-v6-l-stack')
-      .find('.fctl-resource-link__text', { timeout: 60000 })
-      .invoke('text')
-      .as('expectedFleetName')
-    cy.contains('.fctl-device-details-tab__label', 'Fleet name')
-      .closest('.pf-v6-l-stack')
-      .should('not.contain', 'None')
+    deviceDetailsFleetRow(60000).then(($row) => {
+      const linkEl = $row.find('.fctl-resource-link__text, a').first()
+      const fleet = linkEl.length
+        ? linkEl.text().trim()
+        : $row.text().replace(/Fleet\s*(name)?/i, '').trim()
+      cy.wrap(fleet).as('expectedFleetName')
+    })
+    deviceDetailsFleetRow().should('not.contain', 'None')
 
     cy.get('@expectedFleetName').then((fleetName) => {
       const fleet = String(fleetName).trim()
@@ -666,15 +667,11 @@ export const devicesPage = {
   },
 
   expectDeviceDetailsFleetConnected: (fleetName = SCALE_FLEET_NAME) => {
-    cy.contains('.fctl-device-details-tab__label', 'Fleet name', { timeout: 120000 })
-      .closest('.pf-v6-l-stack')
-      .should('contain', fleetName)
+    deviceDetailsFleetRow(120000).should('contain', fleetName)
   },
 
   expectDeviceDetailsFleetDisconnected: () => {
-    cy.contains('.fctl-device-details-tab__label', 'Fleet name', { timeout: 120000 })
-      .closest('.pf-v6-l-stack')
-      .should('contain', 'None')
+    deviceDetailsFleetRow(120000).should('contain', 'None')
   },
 
   removeFleetLabelOnDeviceDetails: (labelText = SCALE_FLEET_LABEL_TEXT) => {
@@ -713,8 +710,9 @@ export const devicesPage = {
 
   waitForVmAppRunning: (deviceName = 'test-device', appName = 'test-vm', timeoutMs = 600000) => {
     cy.get('[data-testid="device-details-title"]', { timeout: 30000 }).should('contain', deviceName)
-    cy.get(DEVICE_APPLICATIONS_TABLE, { timeout: timeoutMs }).scrollIntoView({ block: 'center' })
+    cy.get(DEVICE_APPLICATIONS_TABLE, { timeout: timeoutMs }).first().scrollIntoView({ block: 'center' })
     cy.get(DEVICE_APPLICATIONS_TABLE)
+      .first()
       .find('td[data-label="Name"]')
       .contains(new RegExp(`^${appName}$`), { timeout: timeoutMs })
       .parents('tr')
@@ -726,8 +724,9 @@ export const devicesPage = {
     common.navigateTo('Devices')
     enrolledDeviceLinkByAlias(deviceName).click()
     cy.get('[data-testid="device-details-title"]').should('contain', deviceName)
-    cy.get(DEVICE_APPLICATIONS_TABLE).scrollIntoView({ block: 'center' })
+    cy.get(DEVICE_APPLICATIONS_TABLE).first().scrollIntoView({ block: 'center' })
     cy.get(DEVICE_APPLICATIONS_TABLE)
+      .first()
       .find('td[data-label="Name"]')
       .contains(new RegExp(`^${appName}$`))
       .parents('tr')
@@ -767,20 +766,20 @@ export const devicesPage = {
   },
 
   loginVmSerialConsole: (user = 'fedora', password = 'fedora') => {
-    cy.get(APP_CONSOLE_XTERM_INPUT, { timeout: 30000 }).should('exist').click({ force: true }).type('{enter}', { force: true })
+    cy.get(APP_CONSOLE_XTERM_INPUT, { timeout: 30000 }).first().should('exist').click({ force: true }).type('{enter}', { force: true })
     cy.get(APP_CONSOLE_XTERM_ROWS, { timeout: 120000 }).should(($el) => {
       expect($el.text()).to.match(/login:/i)
     })
-    cy.get(APP_CONSOLE_XTERM_INPUT).click({ force: true }).type(`${user}{enter}`, { force: true, delay: 50 })
+    cy.get(APP_CONSOLE_XTERM_INPUT).first().click({ force: true }).type(`${user}{enter}`, { force: true, delay: 50 })
     cy.get(APP_CONSOLE_XTERM_ROWS, { timeout: 30000 }).should(($el) => {
       expect($el.text()).to.match(/Password:/i)
     })
-    cy.get(APP_CONSOLE_XTERM_INPUT).type(`${password}{enter}`, { force: true, delay: 50, log: false })
-    cy.get(APP_CONSOLE_XTERM_INPUT).type('{enter}', { force: true })
+    cy.get(APP_CONSOLE_XTERM_INPUT).first().type(`${password}{enter}`, { force: true, delay: 50, log: false })
+    cy.get(APP_CONSOLE_XTERM_INPUT).first().type('{enter}', { force: true })
     cy.get(APP_CONSOLE_XTERM_ROWS, { timeout: 60000 }).should(($el) => {
       expect($el.text()).to.match(new RegExp(`${user}@`))
     })
-    cy.get(APP_CONSOLE_XTERM_INPUT).type('whoami{enter}', { force: true, delay: 50 })
+    cy.get(APP_CONSOLE_XTERM_INPUT).first().type('whoami{enter}', { force: true, delay: 50 })
     cy.get(APP_CONSOLE_XTERM_ROWS, { timeout: 30000 }).should(($el) => {
       expect($el.text()).to.match(new RegExp(`whoami[\\s\\S]*${user}`))
     })
