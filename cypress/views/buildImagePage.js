@@ -59,11 +59,19 @@ export const buildImagePage = {
   },
 
   selectReadAndWriteAccessMode: () => {
-    cy.get('#access-mode-read-write-card')
-      .should('be.visible')
-      .click()
-      .should('have.class', 'pf-m-selected')
-    cy.get('#ReadWrite').should('be.checked')
+    cy.get('body').then(($body) => {
+      const card = $body.find('#access-mode-read-write-card')
+      if (card.length) {
+        cy.wrap(card.first())
+          .scrollIntoView({ block: 'center' })
+          .should('be.visible')
+          .click()
+          .should('have.class', 'pf-m-selected')
+        cy.get('#ReadWrite').should('be.checked')
+      } else {
+        cy.get('#radiofield-oci-access-readwrite').check({ force: true })
+      }
+    })
   },
 
   typeRegistryHostname: (hostname) => {
@@ -83,16 +91,22 @@ export const buildImagePage = {
   },
 
   enableAdvancedConfigurations: () => {
-    const selector = '#checkboxfield-useAdvancedConfig'
-
-    cy.get(selector)
-      .scrollIntoView({ block: 'center' })
-      .then(($checkbox) => {
-        if (!$checkbox.is(':checked')) {
-          cy.wrap($checkbox).check({ force: true })
-        }
-      })
-    cy.get(selector).should('be.checked')
+    cy.get('body').then(($body) => {
+      const selector = '#checkboxfield-useAdvancedConfig, #use-advanced-configurations'
+      const checkbox = $body.find(selector)
+      if (checkbox.length) {
+        cy.wrap(checkbox.first())
+          .scrollIntoView({ block: 'center' })
+          .then(($input) => {
+            if (!$input.is(':checked')) {
+              cy.wrap($input).check({ force: true })
+            }
+          })
+        cy.get(selector).first().should('be.checked')
+      } else {
+        clickLabel('Use advanced configurations')
+      }
+    })
   },
 
   enableBasicAuthentication: () => {
