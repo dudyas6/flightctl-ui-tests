@@ -59,7 +59,27 @@ export const buildImagePage = {
   },
 
   selectReadAndWriteAccessMode: () => {
-    cy.get('#radiofield-oci-access-readwrite').check({ force: true })
+    // The legacy form exposes a RadioField input. The redesigned repository form
+    // renders access modes as selectable cards instead, so keep both selectors
+    // working for standalone and ACM deployments on different UI versions.
+    cy.get('body').then(($body) => {
+      const legacyRadio = $body.find('#radiofield-oci-access-readwrite')
+      if (legacyRadio.length) {
+        cy.wrap(legacyRadio).check({ force: true })
+        return
+      }
+
+      cy.get('label, button, [role="radio"]', { timeout: 10000 })
+        .filter(':visible')
+        .filter((_, element) => {
+          const text = `${Cypress.$(element).text()} ${element.getAttribute('aria-label') || ''}`
+          return /read and write/i.test(text)
+        })
+        .first()
+        .scrollIntoView({ block: 'center' })
+        .should('be.visible')
+        .click({ force: true })
+    })
   },
 
   typeRegistryHostname: (hostname) => {
