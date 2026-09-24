@@ -59,7 +59,11 @@ export const buildImagePage = {
   },
 
   selectReadAndWriteAccessMode: () => {
-    cy.get('#radiofield-oci-access-readwrite').check({ force: true })
+    cy.get('#access-mode-read-write-card')
+      .should('be.visible')
+      .click()
+      .should('have.class', 'pf-m-selected')
+    cy.get('#ReadWrite').should('be.checked')
   },
 
   typeRegistryHostname: (hostname) => {

@@ -176,13 +176,17 @@ export const repositoriesPage = {
       .click()
     cy.contains('.pf-v6-c-menu__item-text', 'Edit repository').should('be.visible').click()
     cy.get('[data-testid="repository-add-resource-sync-button"]').click()
-    cy.get('[data-testid="rich-validation-field-resourceSyncs[1].name"]').should('be.visible')
-    cy.get('[data-testid="rich-validation-field-resourceSyncs[1].name"]').clear()
-    cy.get('[data-testid="rich-validation-field-resourceSyncs[1].name"]').type('test-resource1')
-    cy.get('[data-testid="rich-validation-field-resourceSyncs[1].name"]').should('have.value', 'test-resource1')
-    cy.get('[data-testid="textfield-resourceSyncs[1].targetRevision"]').type(revision)
-    cy.get('[data-testid="textfield-resourceSyncs[1].path"]').clear()
-    cy.get('[data-testid="textfield-resourceSyncs[1].path"]').type(newyaml)
+    const newResourceSyncName =
+      '[data-testid^="rich-validation-field-resourceSyncs["][data-testid$=".name"]'
+    const newResourceSyncRevision =
+      '[data-testid^="textfield-resourceSyncs["][data-testid$=".targetRevision"]'
+    const newResourceSyncPath =
+      '[data-testid^="textfield-resourceSyncs["][data-testid$=".path"]'
+
+    cy.get(newResourceSyncName).filter(':visible').last().should('be.visible').clear().type('test-resource1')
+    cy.get(newResourceSyncName).filter(':visible').last().should('have.value', 'test-resource1')
+    cy.get(newResourceSyncRevision).filter(':visible').last().type(revision)
+    cy.get(newResourceSyncPath).filter(':visible').last().clear().type(newyaml)
     cy.get('[data-testid="repository-form-submit"]').click()
     cy.get('[data-testid="repository-details-sync-status"]', { timeout: 100000 }).should('contain', 'Available')
   },
