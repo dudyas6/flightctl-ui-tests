@@ -83,14 +83,16 @@ export const buildImagePage = {
   },
 
   enableAdvancedConfigurations: () => {
-    cy.get('body').then(($body) => {
-      const checkbox = $body.find('#use-advanced-configurations')
-      if (checkbox.length) {
-        cy.wrap(checkbox).check({ force: true })
-      } else {
-        clickLabel('Use advanced configurations')
-      }
-    })
+    const selector = '#checkboxfield-useAdvancedConfig'
+
+    cy.get(selector)
+      .scrollIntoView({ block: 'center' })
+      .then(($checkbox) => {
+        if (!$checkbox.is(':checked')) {
+          cy.wrap($checkbox).check({ force: true })
+        }
+      })
+    cy.get(selector).should('be.checked')
   },
 
   enableBasicAuthentication: () => {
