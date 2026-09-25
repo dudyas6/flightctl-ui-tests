@@ -81,10 +81,18 @@ export const buildImagePage = {
     cy.get('body').then(($body) => {
       const byTestId = $body.find('[data-testid="textfield-url"], [data-testid="textfield-hostname"]')
       if (byTestId.length) {
-        cy.wrap(byTestId.first()).should('be.visible').clear().type(hostname)
+        cy.wrap(byTestId.first())
+          .scrollIntoView({ block: 'center' })
+          .should('be.visible')
+          .clear()
+          .type(hostname)
         cy.wrap(byTestId.first()).should('have.value', hostname)
       } else {
-        inputInGroup('Registry hostname').should('be.visible').clear().type(hostname)
+        inputInGroup('Registry hostname')
+          .scrollIntoView({ block: 'center' })
+          .should('be.visible')
+          .clear()
+          .type(hostname)
         inputInGroup('Registry hostname').should('have.value', hostname)
       }
     })

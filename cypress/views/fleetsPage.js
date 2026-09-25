@@ -89,7 +89,8 @@ export const fleetsPage = {
     cy.get('[data-testid="wizard-next-button"]').click()
     cy.get('[data-testid="wizard-next-button"]').click()
     cy.get('[data-testid="wizard-save-button"]').click()
-    cy.url().should('include', `/devicemanagement/fleets/${fleetname}`)
+    const fleetRoute = Cypress.env('useAcmNavigation') ? '/edge/fleets/' : '/devicemanagement/fleets/'
+    cy.url().should('include', `${fleetRoute}${fleetname}`)
   },
 
   /**

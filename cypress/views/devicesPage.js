@@ -425,12 +425,13 @@ export const devicesPage = {
   decommissionDevice: (deviceName = 'test-device-edited2') => {
     common.navigateTo('Devices')
     scrollEnrolledDevicesTableIntoView()
+    waitEnrolledPaginationIdle()
 
     enrolledDeviceRowByAlias(deviceName)
       .scrollIntoView({ block: 'center' })
       .find('input[type="checkbox"]')
       .should('be.visible')
-      .click()
+      .click({ force: true })
     cy.get('[data-testid="toolbar-decommission-devices"]').should('be.visible')
     cy.get('[data-testid="toolbar-decommission-devices"]').click()
     cy.get('[data-testid="modal-decommission-confirm"]').should('be.visible')
@@ -557,13 +558,24 @@ export const devicesPage = {
     enrolledDeviceRows().should('have.length.at.least', 1)
     enrolledDeviceRows().last().scrollIntoView({ block: 'end' })
     waitEnrolledPaginationIdle()
-    enrolledDevicesListSection().within(() => {
-      cy.get('button[aria-label="Go to next page"]', { timeout: 120000 })
-        .first()
-        .scrollIntoView({ block: 'center', inline: 'center' })
-        .should('not.be.disabled')
-        .click({ force: true })
-    })
+    cy.get('[data-testid="enrolled-devices-table"] [data-testid^="device-name-link-"]')
+      .first()
+      .invoke('attr', 'data-testid')
+      .then((firstDeviceBeforePageChange) => {
+        enrolledDevicesListSection().within(() => {
+          cy.get('button[aria-label="Go to next page"]', { timeout: 120000 })
+            .first()
+            .scrollIntoView({ block: 'center', inline: 'center' })
+            .should('not.be.disabled')
+            .click({ force: true })
+        })
+        waitEnrolledPaginationIdle()
+        cy.get('[data-testid="enrolled-devices-table"] [data-testid^="device-name-link-"]')
+          .first()
+          .should(($link) => {
+            expect($link.attr('data-testid')).not.to.equal(firstDeviceBeforePageChange)
+          })
+      })
   },
 
   /**
