@@ -436,7 +436,13 @@ export const devicesPage = {
     cy.get('[data-testid="toolbar-decommission-devices"]').click()
     cy.get('[data-testid="modal-decommission-confirm"]').should('be.visible')
     cy.get('[data-testid="modal-decommission-confirm"]').click()
-    cy.get('[data-testid="decommissioned-devices-table"]').should('exist')
+    // The decommission request first moves the device to Decommissioning. The table is
+    // polled while that transition completes, so wait for the terminal status before
+    // selecting the row for deletion; otherwise the header checkbox can detach mid-click.
+    cy.get('[data-testid="decommissioned-devices-table"]', { timeout: 120000 }).should('be.visible')
+    cy.contains('[data-testid="decommissioned-devices-table"] tbody tr', 'Decommissioned', {
+      timeout: 120000,
+    }).should('be.visible')
     cy.get('[data-testid="decommissioned-devices-table"] thead input[type="checkbox"]')
       .scrollIntoView({ block: 'center' })
       .should('be.visible')
