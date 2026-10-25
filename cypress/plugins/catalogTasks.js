@@ -7,6 +7,11 @@ const DEFAULT_CATALOG_NAME = 'default'
 const CHANNEL = 'stable'
 const INITIAL_VERSION = '1.0.0'
 const UPDATE_VERSION = '1.1.0'
+const GRAPH_INITIAL_VERSION = '2.0.0'
+const GRAPH_REACHABLE_VERSION = '2.1.0'
+const GRAPH_LATEST_VERSION = '2.2.0'
+const GRAPH_UNREACHABLE_VERSION = '9.0.0'
+const CONFIG_VERSION = '3.0.0'
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -16,7 +21,30 @@ function isNotFound(error) {
   return /not found|notfound|404/i.test(`${error?.message || ''} ${error?.stderr || ''}`)
 }
 
-function catalogItemManifest({ catalogName, itemName, displayName, category, type, artifactUri }) {
+function catalogItemManifest({
+  catalogName,
+  itemName,
+  displayName,
+  category,
+  type,
+  artifactUri,
+  artifactType = 'container',
+  versions = [
+    { version: INITIAL_VERSION, reference: INITIAL_VERSION, channels: [CHANNEL] },
+    { version: UPDATE_VERSION, reference: UPDATE_VERSION, channels: [CHANNEL], replaces: INITIAL_VERSION },
+  ],
+}) {
+  const versionLines = versions.flatMap((version) => [
+    `    - version: "${version.version}"`,
+    `      channels: [${(version.channels || [CHANNEL]).join(', ')}]`,
+    `      references: {${artifactType}: "${version.reference || version.version}"}`,
+    ...(version.replaces ? [`      replaces: "${version.replaces}"`] : []),
+    ...(version.skips ? [`      skips: [${version.skips.map((skip) => `"${skip}"`).join(', ')}]`] : []),
+    ...(version.skipRange ? [`      skipRange: "${version.skipRange}"`] : []),
+    ...(version.config ? [`      config: ${JSON.stringify(version.config)}`] : []),
+    ...(version.configSchema ? [`      configSchema: ${JSON.stringify(version.configSchema)}`] : []),
+  ])
+
   return [
     'apiVersion: flightctl.io/v1alpha1',
     'kind: CatalogItem',
@@ -28,16 +56,10 @@ function catalogItemManifest({ catalogName, itemName, displayName, category, typ
     `  type: ${type}`,
     `  displayName: ${displayName}`,
     '  artifacts:',
-    '    - type: container',
+    `    - type: ${artifactType}`,
     `      uri: ${artifactUri}`,
     '  versions:',
-    `    - version: "${INITIAL_VERSION}"`,
-    `      channels: [${CHANNEL}]`,
-    `      references: {container: "${INITIAL_VERSION}"}`,
-    `    - version: "${UPDATE_VERSION}"`,
-    `      channels: [${CHANNEL}]`,
-    `      references: {container: "${UPDATE_VERSION}"}`,
-    `      replaces: "${INITIAL_VERSION}"`,
+    ...versionLines,
     '',
   ].join('\n')
 }
@@ -103,12 +125,27 @@ function fixtureNames() {
   return {
     fleetName: `catalog-inheritance-fleet-${suffix}`,
     editFleetName: `catalog-inheritance-edit-fleet-${suffix}`,
+    graphFleetName: `catalog-inheritance-graph-fleet-${suffix}`,
+    unreachableFleetName: `catalog-inheritance-unreachable-fleet-${suffix}`,
+    configFleetName: `catalog-inheritance-config-fleet-${suffix}`,
+    requiredFleetName: `catalog-inheritance-required-fleet-${suffix}`,
+    noSchemaFleetName: `catalog-inheritance-no-schema-fleet-${suffix}`,
+    manualFleetName: `catalog-inheritance-manual-fleet-${suffix}`,
     osItemName: `catalog-inheritance-os-${suffix}`,
     appItemName: `catalog-inheritance-app-${suffix}`,
+    graphAppItemName: `catalog-inheritance-graph-app-${suffix}`,
+    unreachableAppItemName: `catalog-inheritance-unreachable-app-${suffix}`,
+    schemaAppItemName: `catalog-inheritance-schema-app-${suffix}`,
+    requiredAppItemName: `catalog-inheritance-required-app-${suffix}`,
+    noSchemaAppItemName: `catalog-inheritance-no-schema-app-${suffix}`,
+    vmCandidateItemName: `catalog-inheritance-vm-candidate-${suffix}`,
   }
 }
 
-async function catalogInheritanceSetup({ catalogName = DEFAULT_CATALOG_NAME } = {}) {
+async function catalogInheritanceSetup({
+  catalogName = DEFAULT_CATALOG_NAME,
+  includeAdvancedFixtures = true,
+} = {}) {
   const names = fixtureNames()
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flightctl-edm5295-'))
   const osDisplayName = names.osItemName
@@ -131,7 +168,112 @@ async function catalogInheritanceSetup({ catalogName = DEFAULT_CATALOG_NAME } = 
       type: 'container',
       artifactUri: 'quay.io/sdelacru/flightctl-centos',
     }),
+    ...(includeAdvancedFixtures ? [
+      catalogItemManifest({
+        catalogName,
+        itemName: names.graphAppItemName,
+        displayName: names.graphAppItemName,
+        category: 'application',
+        type: 'container',
+        artifactUri: 'quay.io/sdelacru/flightctl-centos',
+        versions: [
+          { version: GRAPH_INITIAL_VERSION, reference: GRAPH_INITIAL_VERSION, channels: [CHANNEL] },
+          {
+            version: GRAPH_REACHABLE_VERSION,
+            reference: GRAPH_REACHABLE_VERSION,
+            channels: [CHANNEL],
+            replaces: GRAPH_INITIAL_VERSION,
+          },
+          {
+            version: GRAPH_LATEST_VERSION,
+            reference: GRAPH_LATEST_VERSION,
+            channels: [CHANNEL],
+            replaces: GRAPH_REACHABLE_VERSION,
+          },
+          { version: GRAPH_UNREACHABLE_VERSION, reference: GRAPH_UNREACHABLE_VERSION, channels: [CHANNEL] },
+        ],
+      }),
+      catalogItemManifest({
+        catalogName,
+        itemName: names.unreachableAppItemName,
+        displayName: names.unreachableAppItemName,
+        category: 'application',
+        type: 'container',
+        artifactUri: 'quay.io/sdelacru/flightctl-centos',
+        versions: [
+          { version: GRAPH_INITIAL_VERSION, reference: GRAPH_INITIAL_VERSION, channels: [CHANNEL] },
+          { version: GRAPH_UNREACHABLE_VERSION, reference: GRAPH_UNREACHABLE_VERSION, channels: [CHANNEL] },
+        ],
+      }),
+      catalogItemManifest({
+        catalogName,
+        itemName: names.schemaAppItemName,
+        displayName: names.schemaAppItemName,
+        category: 'application',
+        type: 'container',
+        artifactUri: 'quay.io/sdelacru/flightctl-centos',
+        versions: [{
+          version: CONFIG_VERSION,
+          reference: CONFIG_VERSION,
+          channels: [CHANNEL],
+          config: { envVars: { LOG_LEVEL: 'info' } },
+          configSchema: {
+            type: 'object',
+            properties: {
+              envVars: {
+                type: 'object',
+                properties: { LOG_LEVEL: { type: 'string', default: 'info' } },
+                required: ['LOG_LEVEL'],
+              },
+            },
+          },
+        }],
+      }),
+      catalogItemManifest({
+        catalogName,
+        itemName: names.requiredAppItemName,
+        displayName: names.requiredAppItemName,
+        category: 'application',
+        type: 'container',
+        artifactUri: 'quay.io/sdelacru/flightctl-centos',
+        versions: [{
+          version: CONFIG_VERSION,
+          reference: CONFIG_VERSION,
+          channels: [CHANNEL],
+          configSchema: {
+            type: 'object',
+            properties: {
+              envVars: {
+                type: 'object',
+                properties: { REQUIRED_VALUE: { type: 'string', minLength: 1 } },
+                required: ['REQUIRED_VALUE'],
+              },
+            },
+          },
+        }],
+      }),
+      catalogItemManifest({
+        catalogName,
+        itemName: names.noSchemaAppItemName,
+        displayName: names.noSchemaAppItemName,
+        category: 'application',
+        type: 'container',
+        artifactUri: 'quay.io/sdelacru/flightctl-centos',
+        versions: [{ version: CONFIG_VERSION, reference: CONFIG_VERSION, channels: [CHANNEL] }],
+      }),
+      catalogItemManifest({
+        catalogName,
+        itemName: names.vmCandidateItemName,
+        displayName: names.vmCandidateItemName,
+        category: 'application',
+        type: 'container',
+        artifactType: 'qcow2',
+        artifactUri: 'quay.io/sdelacru/flightctl-vm-disk',
+      }),
+    ] : []),
   ]
+
+  const itemNames = manifests.map((manifest) => manifest.match(/metadata:\n  name: ([^\n]+)/)[1])
 
   try {
     manifests.forEach((manifest, index) => {
@@ -139,12 +281,23 @@ async function catalogInheritanceSetup({ catalogName = DEFAULT_CATALOG_NAME } = 
       fs.writeFileSync(manifestPath, manifest)
       runFlightctl(['apply', '-f', manifestPath])
     })
-    await waitForCatalogItem(catalogName, names.osItemName)
-    await waitForCatalogItem(catalogName, names.appItemName)
-    return { catalogName, ...names, initialVersion: INITIAL_VERSION, updateVersion: UPDATE_VERSION, channel: CHANNEL }
+    for (const itemName of itemNames) await waitForCatalogItem(catalogName, itemName)
+    return {
+      catalogName,
+      ...names,
+      catalogItemNames: itemNames,
+      initialVersion: INITIAL_VERSION,
+      updateVersion: UPDATE_VERSION,
+      graphInitialVersion: GRAPH_INITIAL_VERSION,
+      graphReachableVersion: GRAPH_REACHABLE_VERSION,
+      graphLatestVersion: GRAPH_LATEST_VERSION,
+      graphUnreachableVersion: GRAPH_UNREACHABLE_VERSION,
+      configVersion: CONFIG_VERSION,
+      channel: CHANNEL,
+    }
   } catch (error) {
-    await cleanupCatalogItems(catalogName, [names.osItemName, names.appItemName]).catch(() => {})
-    throw new Error(`Failed to create EDM-5295 catalog fixtures: ${error.message}`)
+    await cleanupCatalogItems(catalogName, itemNames).catch(() => {})
+    throw new Error(`Failed to create EDM-6153 catalog fixtures: ${error.message}`)
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })
   }
@@ -154,11 +307,27 @@ async function catalogInheritanceCleanup({
   catalogName = DEFAULT_CATALOG_NAME,
   fleetName,
   editFleetName,
+  graphFleetName,
+  unreachableFleetName,
+  configFleetName,
+  requiredFleetName,
+  noSchemaFleetName,
+  manualFleetName,
   osItemName,
   appItemName,
+  catalogItemNames,
 } = {}) {
   let cleanupError
-  const fleetNames = [fleetName, editFleetName].filter(Boolean)
+  const fleetNames = [
+    fleetName,
+    editFleetName,
+    graphFleetName,
+    unreachableFleetName,
+    configFleetName,
+    requiredFleetName,
+    noSchemaFleetName,
+    manualFleetName,
+  ].filter(Boolean)
 
   for (const fleetToDelete of fleetNames) {
     try {
@@ -175,7 +344,10 @@ async function catalogInheritanceCleanup({
   }
 
   try {
-    await cleanupCatalogItems(catalogName, [osItemName, appItemName].filter(Boolean))
+    await cleanupCatalogItems(
+      catalogName,
+      (catalogItemNames || [osItemName, appItemName]).filter(Boolean),
+    )
   } catch (error) {
     cleanupError ||= error
   }

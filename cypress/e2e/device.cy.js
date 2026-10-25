@@ -1,8 +1,47 @@
 import { devicesPage, LOG_PRIORITIES } from '../views/devicesPage'
+import { systemImageInput } from '../views/common'
 
 const DEVICE_NAME = 'test-device'
 const DEVICE_NAME_EDITED = 'test-device-edited'
 const DEVICE_NAME_EDITED_2 = 'test-device-edited2'
+
+const assertCatalogReference = (reference, { catalog, item, version, channel }) => {
+  expect(reference, `catalogItemRef for ${item}`).to.exist
+  expect(reference.catalog, `catalog for ${item}`).to.equal(catalog)
+  expect(reference.item, `item for ${item}`).to.equal(item)
+  expect(reference.version, `version for ${item}`).to.equal(version)
+  expect(reference.channel, `channel for ${item}`).to.equal(channel)
+}
+
+const assertDeviceCatalogPatch = (request, { catalog, osItemName, appItemName, version, channel }) => {
+  const patches = Array.isArray(request.body) ? request.body : request.body?.patches
+  expect(patches, 'device update JSON patch').to.be.an('array')
+
+  const osPatch = [...patches].reverse().find(
+    (patch) => patch.path === '/spec/os' || patch.path === '/spec/os/catalogItemRef',
+  )
+  const osValue = osPatch?.path.endsWith('/catalogItemRef') ? { catalogItemRef: osPatch.value } : osPatch?.value
+  assertCatalogReference(osValue?.catalogItemRef, {
+    catalog,
+    item: osItemName,
+    version,
+    channel,
+  })
+  expect(osValue?.image, 'catalog device OS image field').to.be.undefined
+
+  const applicationValues = patches
+    .filter((patch) => patch.path === '/spec/applications' || patch.path.startsWith('/spec/applications/'))
+    .flatMap((patch) => (Array.isArray(patch.value) ? patch.value : [patch.value]))
+  const catalogApp = applicationValues.find((application) => application?.catalogItemRef?.item === appItemName)
+  expect(catalogApp, `catalog application ${appItemName}`).to.exist
+  assertCatalogReference(catalogApp.catalogItemRef, {
+    catalog,
+    item: appItemName,
+    version,
+    channel,
+  })
+  expect(catalogApp.image, `catalog application ${appItemName} image field`).to.be.undefined
+}
 
 describe('Device Management', () => {
   // One login + visit per spec file; later tests reuse the same tab (testIsolation: false).
@@ -73,6 +112,69 @@ describe('Device Management', () => {
 
     it('Should view device events', () => {
       devicesPage.deviceEvents(DEVICE_NAME_EDITED_2)
+    })
+  })
+
+  describe('Catalog inheritance for standalone devices', () => {
+    const fixture = {}
+    const deviceAlias = 'test-apps'
+    const channel = 'stable'
+    const initialVersion = '1.0.0'
+
+    before(() => {
+      cy.task('catalogInheritanceSetup', {
+        catalogName: 'default',
+        includeAdvancedFixtures: false,
+      }).then((created) => {
+        Object.assign(fixture, created)
+      })
+    })
+
+    after(() => {
+      if (!fixture.fleetName) return
+
+      // Restore the simulator-owned standalone device before deleting the catalog fixtures.
+      devicesPage.openEditDeviceConfigurations(deviceAlias)
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      devicesPage.clearManualOs()
+      devicesPage.removeCatalogApplication(fixture.appItemName)
+      systemImageInput().type(Cypress.env('image'))
+      devicesPage.saveDeviceTemplateWizard()
+      cy.task('catalogInheritanceCleanup', fixture)
+    })
+
+    it('Should replace the manual OS with pinned catalog OS and application references', () => {
+      cy.intercept('PATCH', '**/devices/**').as('saveCatalogDeviceRequest')
+      devicesPage.openEditDeviceConfigurations(deviceAlias)
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      devicesPage.clearManualOs()
+      devicesPage.addCatalogOs(fixture.osItemName, channel, initialVersion)
+      devicesPage.addCatalogApplication(fixture.appItemName, channel, initialVersion)
+      devicesPage.expectCatalogInheritanceTemplate(
+        fixture.osItemName,
+        fixture.appItemName,
+        { updateAvailable: true },
+      )
+      devicesPage.saveDeviceTemplateWizard()
+      cy.wait('@saveCatalogDeviceRequest', { timeout: 60000 }).then(({ request }) => {
+        assertDeviceCatalogPatch(request, {
+          catalog: 'default',
+          osItemName: fixture.osItemName,
+          appItemName: fixture.appItemName,
+          version: initialVersion,
+          channel,
+        })
+      })
+    })
+
+    it('Should show Update available for a reachable catalog upgrade during device edit', () => {
+      devicesPage.openEditDeviceConfigurations(deviceAlias)
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      devicesPage.expectCatalogUpdateAvailable(fixture.appItemName)
+      cy.contains('Update available').should('be.visible')
+      cy.get('#selectfield-version-menu:visible').should('not.exist')
+      cy.get('[data-testid="wizard-cancel-button"]').click()
+      cy.get('[data-testid="wizard-cancel-button"]').should('not.exist')
     })
   })
 

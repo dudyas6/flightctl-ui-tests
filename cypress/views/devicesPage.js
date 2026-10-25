@@ -1,4 +1,5 @@
 import { common, deviceDetailsFleetRow, systemImageInput } from './common'
+import { fleetsPage } from './fleetsPage'
 
 /** Default table row index for flows that assume a single primary device row */
 const ROW_0 = 0
@@ -788,6 +789,52 @@ export const devicesPage = {
     cy.contains('Edit device configurations').click()
     cy.contains('h1', 'Edit device').should('be.visible')
     cy.get('[data-testid="wizard-next-button"]').should('be.visible')
+  },
+
+  /** Clear the manual OS image so a catalog OS can be selected. */
+  clearManualOs: () => {
+    systemImageInput().clear().should('have.value', '')
+  },
+
+  /** Add a catalog OS to the open standalone-device wizard. */
+  addCatalogOs: (itemName, channel, version) => {
+    fleetsPage.addCatalogOs(itemName, channel, version)
+  },
+
+  /** Add a catalog application to the open standalone-device wizard. */
+  addCatalogApplication: (itemName, channel, version) => {
+    fleetsPage.addCatalogApplication(itemName, channel, version)
+  },
+
+  /** Verify catalog references and edit-only status in the device template. */
+  expectCatalogInheritanceTemplate: (osItemName, appItemName, options = {}) => {
+    fleetsPage.expectCatalogInheritanceTemplate(osItemName, appItemName, options)
+  },
+
+  /** Verify an update badge is shown for the selected catalog item in edit mode. */
+  expectCatalogUpdateAvailable: (itemName) => {
+    cy.contains(itemName, { timeout: 60000 }).parents().filter((_, element) => {
+      const candidate = Cypress.$(element)
+      return candidate.text().includes(itemName) && candidate.text().length < 1500
+    }).first().contains('Update available').should('be.visible')
+  },
+
+  /** Remove a catalog application from the open standalone-device wizard. */
+  removeCatalogApplication: (itemName) => {
+    fleetsPage.removeCatalogApplication(itemName)
+  },
+
+  /** Add a manual container application using the existing wizard path. */
+  addManualApplication: (image, index = 0) => {
+    fleetsPage.addManualApplication(image, index)
+  },
+
+  /** Save the open standalone-device wizard after editing its device template. */
+  saveDeviceTemplateWizard: () => {
+    cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+    cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+    cy.get('[data-testid="wizard-save-button"]').should('be.visible').click()
+    cy.get('[data-testid="device-details-title"]', { timeout: 120000 }).should('be.visible')
   },
 
   addApplications: (deviceName, apps) => {

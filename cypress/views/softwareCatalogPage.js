@@ -33,6 +33,11 @@ export const softwareCatalogPage = {
     cy.contains('button', 'Deploy').should('be.visible').click()
   },
 
+  /** Verify the main-navigation deploy wizard still includes application configuration. */
+  expectApplicationConfigurationStep: () => {
+    cy.contains('Application configuration', { timeout: 30000 }).should('be.visible')
+  },
+
   /**
    * Select the "Existing Fleet" radio in the Specifications step.
    * RadioField prefixes the id prop with "radiofield-", so id="fleet-radio"
