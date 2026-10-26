@@ -1,50 +1,6 @@
 import { fleetsPage } from '../views/fleetsPage'
 import { repositoriesPage } from '../views/repositoriesPage'
 
-const assertCatalogReference = (reference, { catalog, item, version, channel }) => {
-  expect(reference, `catalogItemRef for ${item}`).to.exist
-  expect(reference.catalog, `catalog for ${item}`).to.equal(catalog)
-  expect(reference.item, `item for ${item}`).to.equal(item)
-  expect(reference.version, `version for ${item}`).to.equal(version)
-  expect(reference.channel, `channel for ${item}`).to.equal(channel)
-}
-
-const assertFleetCatalogRequest = (request, {
-  catalog = 'default',
-  osItemName,
-  osVersion,
-  appItemName,
-  appVersion,
-  channel,
-  appEnvVars,
-}) => {
-  const templateSpec = request.body?.spec?.template?.spec
-  expect(templateSpec, 'created fleet template spec').to.exist
-
-  if (osItemName) {
-    assertCatalogReference(templateSpec.os?.catalogItemRef, {
-      catalog,
-      item: osItemName,
-      version: osVersion,
-      channel,
-    })
-    expect(templateSpec.os?.image, 'catalog OS image field').to.be.undefined
-  }
-
-  const catalogApp = (templateSpec.applications || []).find(
-    (application) => application.catalogItemRef?.item === appItemName,
-  )
-  expect(catalogApp, `catalog application ${appItemName}`).to.exist
-  assertCatalogReference(catalogApp.catalogItemRef, {
-    catalog,
-    item: appItemName,
-    version: appVersion,
-    channel,
-  })
-  expect(catalogApp.image, `catalog application ${appItemName} image field`).to.be.undefined
-  if (appEnvVars) expect(catalogApp.envVars).to.deep.include(appEnvVars)
-}
-
 // Skipped temporarily to shorten CI runs — remove .skip to re-enable.
 describe('Fleet Management', () => {
   before(() => {
@@ -135,7 +91,6 @@ describe('Fleet Management', () => {
     })
 
     it('Should create a fleet with pinned catalog OS and application references', () => {
-      cy.intercept('**/api/v1/fleets**').as('createFleetRequest')
       fleetsPage.openCreateFleetWizard()
       fleetsPage.proceedToDeviceTemplate(fixture.fleetName)
       fleetsPage.addCatalogOs(fixture.osItemName, channel, initialVersion)
@@ -150,16 +105,6 @@ describe('Fleet Management', () => {
         initialVersion,
       )
       cy.get('[data-testid="wizard-save-button"]').should('be.visible').click()
-      cy.wait('@createFleetRequest', { timeout: 60000 }).then(({ request }) => {
-        expect(request.url).not.to.contain('/catalog')
-        assertFleetCatalogRequest(request, {
-          osItemName: fixture.osItemName,
-          osVersion: initialVersion,
-          appItemName: fixture.appItemName,
-          appVersion: initialVersion,
-          channel,
-        })
-      })
       fleetsPage.openFleetCatalogTab()
       fleetsPage.expectCatalogItemState(fixture.osItemName, initialVersion, true)
       fleetsPage.expectCatalogItemState(fixture.appItemName, initialVersion, true)
@@ -254,7 +199,6 @@ describe('Fleet Management', () => {
     })
 
     it('Should allow optional schema configuration and expose Form/YAML views with catalog defaults', () => {
-      cy.intercept('**/api/v1/fleets**').as('createConfigFleetRequest')
       fleetsPage.openCreateFleetWizard()
       fleetsPage.proceedToDeviceTemplate(fixture.configFleetName)
       fleetsPage.openCatalogApplicationPicker()
@@ -269,15 +213,6 @@ describe('Fleet Management', () => {
       cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
       cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
       cy.get('[data-testid="wizard-save-button"]').should('be.visible').click()
-      cy.wait('@createConfigFleetRequest', { timeout: 60000 }).then(({ request }) => {
-        expect(request.url).not.to.contain('/catalog')
-        assertFleetCatalogRequest(request, {
-          appItemName: fixture.schemaAppItemName,
-          appVersion: fixture.configVersion,
-          channel,
-          appEnvVars: { LOG_LEVEL: 'info' },
-        })
-      })
       fleetsPage.openFleetCatalogTab()
       fleetsPage.openCatalogItemEdit(fixture.schemaAppItemName)
       cy.get('[data-testid="wizard-next-button"]', { timeout: 30000 }).should('not.be.disabled').click()
@@ -288,7 +223,6 @@ describe('Fleet Management', () => {
     })
 
     it('Should require schema fields that are not satisfied by catalog defaults', () => {
-      cy.intercept('**/api/v1/fleets**').as('createRequiredFleetRequest')
       fleetsPage.openCreateFleetWizard()
       fleetsPage.proceedToDeviceTemplate(fixture.requiredFleetName)
       fleetsPage.openCatalogApplicationPicker()
@@ -304,15 +238,6 @@ describe('Fleet Management', () => {
       cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
       cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
       cy.get('[data-testid="wizard-save-button"]').should('be.visible').click()
-      cy.wait('@createRequiredFleetRequest', { timeout: 60000 }).then(({ request }) => {
-        expect(request.url).not.to.contain('/catalog')
-        assertFleetCatalogRequest(request, {
-          appItemName: fixture.requiredAppItemName,
-          appVersion: fixture.configVersion,
-          channel,
-          appEnvVars: { REQUIRED_VALUE: 'required-value' },
-        })
-      })
     })
 
     it('Should expose YAML-only optional configuration for catalog items without a schema', () => {

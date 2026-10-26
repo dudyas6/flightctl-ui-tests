@@ -339,10 +339,12 @@ function registerScaleFleetSimulatorTasks(on) {
     },
 
     /**
-     * Patches only status.capabilities.osMode on an existing device via GET/PUT.
+     * Patches the reported OS mode on an existing device via GET/PUT.
      * The device simulator always reports osMode=package; the catalog deploy wizard
      * filters out package-based devices, so we flip osMode to "image" after
      * enrollment so the device appears as a valid deploy target.
+     * Newer agents report the authoritative value in status.systemInfo.osMode;
+     * status.capabilities.osMode is retained for older-agent compatibility.
      *
      * IMPORTANT: stop the simulator BEFORE calling this — otherwise the agent
      * heartbeat will overwrite the patched osMode back to "package".
@@ -403,7 +405,9 @@ function registerScaleFleetSimulatorTasks(on) {
           return { success: false, error: `parse device JSON: ${e.message}` }
         }
         if (!device.status) device.status = {}
+        if (!device.status.systemInfo) device.status.systemInfo = {}
         if (!device.status.capabilities) device.status.capabilities = {}
+        device.status.systemInfo.osMode = osMode
         device.status.capabilities.osMode = osMode
         console.log(`[patchDeviceOsMode] Setting ${deviceName} osMode=${osMode} (attempt ${attempt})`)
 

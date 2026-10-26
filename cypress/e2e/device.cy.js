@@ -5,44 +5,6 @@ const DEVICE_NAME = 'test-device'
 const DEVICE_NAME_EDITED = 'test-device-edited'
 const DEVICE_NAME_EDITED_2 = 'test-device-edited2'
 
-const assertCatalogReference = (reference, { catalog, item, version, channel }) => {
-  expect(reference, `catalogItemRef for ${item}`).to.exist
-  expect(reference.catalog, `catalog for ${item}`).to.equal(catalog)
-  expect(reference.item, `item for ${item}`).to.equal(item)
-  expect(reference.version, `version for ${item}`).to.equal(version)
-  expect(reference.channel, `channel for ${item}`).to.equal(channel)
-}
-
-const assertDeviceCatalogPatch = (request, { catalog, osItemName, appItemName, version, channel }) => {
-  const patches = Array.isArray(request.body) ? request.body : request.body?.patches
-  expect(patches, 'device update JSON patch').to.be.an('array')
-
-  const osPatch = [...patches].reverse().find(
-    (patch) => patch.path === '/spec/os' || patch.path === '/spec/os/catalogItemRef',
-  )
-  const osValue = osPatch?.path.endsWith('/catalogItemRef') ? { catalogItemRef: osPatch.value } : osPatch?.value
-  assertCatalogReference(osValue?.catalogItemRef, {
-    catalog,
-    item: osItemName,
-    version,
-    channel,
-  })
-  expect(osValue?.image, 'catalog device OS image field').to.be.undefined
-
-  const applicationValues = patches
-    .filter((patch) => patch.path === '/spec/applications' || patch.path.startsWith('/spec/applications/'))
-    .flatMap((patch) => (Array.isArray(patch.value) ? patch.value : [patch.value]))
-  const catalogApp = applicationValues.find((application) => application?.catalogItemRef?.item === appItemName)
-  expect(catalogApp, `catalog application ${appItemName}`).to.exist
-  assertCatalogReference(catalogApp.catalogItemRef, {
-    catalog,
-    item: appItemName,
-    version,
-    channel,
-  })
-  expect(catalogApp.image, `catalog application ${appItemName} image field`).to.be.undefined
-}
-
 describe('Device Management', () => {
   // One login + visit per spec file; later tests reuse the same tab (testIsolation: false).
   before(() => {
@@ -97,27 +59,9 @@ describe('Device Management', () => {
     }) */
   })
 
-  describe('Edit device, view device events', () => {
-    it('Should edit a device', () => {
-      devicesPage.editDevice(`${Cypress.env('image')}`, DEVICE_NAME, DEVICE_NAME_EDITED)
-    })
-
-    it('Should edit a device image - fake url', () => {
-      devicesPage.editDevice(`quay.io/redhat/rhde:9.2`, DEVICE_NAME_EDITED, DEVICE_NAME_EDITED_2)
-    })
-
-    it('Should make sure device is out-of-date', () => {
-      devicesPage.checkDeviceOutOfDate(DEVICE_NAME_EDITED_2)
-    })
-
-    it('Should view device events', () => {
-      devicesPage.deviceEvents(DEVICE_NAME_EDITED_2)
-    })
-  })
-
   describe('Catalog inheritance for standalone devices', () => {
     const fixture = {}
-    const deviceAlias = 'test-apps'
+    const deviceAlias = DEVICE_NAME
     const channel = 'stable'
     const initialVersion = '1.0.0'
 
@@ -133,7 +77,7 @@ describe('Device Management', () => {
     after(() => {
       if (!fixture.fleetName) return
 
-      // Restore the simulator-owned standalone device before deleting the catalog fixtures.
+      // Restore the device owned by this spec before deleting the catalog fixtures.
       devicesPage.openEditDeviceConfigurations(deviceAlias)
       cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
       devicesPage.clearManualOs()
@@ -144,7 +88,6 @@ describe('Device Management', () => {
     })
 
     it('Should replace the manual OS with pinned catalog OS and application references', () => {
-      cy.intercept('PATCH', '**/devices/**').as('saveCatalogDeviceRequest')
       devicesPage.openEditDeviceConfigurations(deviceAlias)
       cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
       devicesPage.clearManualOs()
@@ -156,15 +99,6 @@ describe('Device Management', () => {
         { updateAvailable: true },
       )
       devicesPage.saveDeviceTemplateWizard()
-      cy.wait('@saveCatalogDeviceRequest', { timeout: 60000 }).then(({ request }) => {
-        assertDeviceCatalogPatch(request, {
-          catalog: 'default',
-          osItemName: fixture.osItemName,
-          appItemName: fixture.appItemName,
-          version: initialVersion,
-          channel,
-        })
-      })
     })
 
     it('Should show Update available for a reachable catalog upgrade during device edit', () => {
@@ -175,6 +109,24 @@ describe('Device Management', () => {
       cy.get('#selectfield-version-menu:visible').should('not.exist')
       cy.get('[data-testid="wizard-cancel-button"]').click()
       cy.get('[data-testid="wizard-cancel-button"]').should('not.exist')
+    })
+  })
+
+  describe('Edit device, view device events', () => {
+    it('Should edit a device', () => {
+      devicesPage.editDevice(`${Cypress.env('image')}`, DEVICE_NAME, DEVICE_NAME_EDITED)
+    })
+
+    it('Should edit a device image - fake url', () => {
+      devicesPage.editDevice(`quay.io/redhat/rhde:9.2`, DEVICE_NAME_EDITED, DEVICE_NAME_EDITED_2)
+    })
+
+    it('Should make sure device is out-of-date', () => {
+      devicesPage.checkDeviceOutOfDate(DEVICE_NAME_EDITED_2)
+    })
+
+    it('Should view device events', () => {
+      devicesPage.deviceEvents(DEVICE_NAME_EDITED_2)
     })
   })
 

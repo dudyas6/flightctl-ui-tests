@@ -20,7 +20,7 @@ const DEVICE_ALIAS = Cypress.env('deviceAlias') || 'device-00100'
 
 const waitForDeployableDevice = (deviceName, attempts = 30) =>
   cy.task('getDeviceStatus', { deviceName }).then((device) => {
-    const osMode = device?.status?.capabilities?.osMode
+    const osMode = device?.status?.systemInfo?.osMode || device?.status?.capabilities?.osMode
     if (osMode === 'image') return
     if (attempts <= 1) {
       throw new Error(`Device ${deviceName} did not become deployable: status.capabilities.osMode=${osMode || '<missing>'}`)
