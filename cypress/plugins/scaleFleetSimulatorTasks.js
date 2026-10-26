@@ -4,6 +4,14 @@ const path = require('path')
 const os = require('os')
 
 let simulatorProcess = null
+let simulatorDiagnostics = []
+
+function recordSimulatorDiagnostic(chunk) {
+  const text = String(chunk || '').trim()
+  if (!text) return
+  simulatorDiagnostics.push(text)
+  simulatorDiagnostics = simulatorDiagnostics.slice(-20)
+}
 
 /**
  * Parses ~/.config/flightctl/client.yaml to extract service.server and
@@ -167,7 +175,7 @@ function registerScaleFleetSimulatorTasks(on) {
      * If a simulator child is already running, returns `{ alreadyRunning: true }` instead of starting another.
      */
     scaleFleetSimulatorStart({ count = 50, label = 'fleet=scale-fleet-00', initialDeviceIndex = 0 } = {}) {
-      if (simulatorProcess && !simulatorProcess.killed) {
+      if (simulatorProcess && simulatorProcess.exitCode === null && !simulatorProcess.killed) {
         return { alreadyRunning: true, pid: simulatorProcess.pid }
       }
       // Remove stale device data so the simulator re-submits enrollment requests
@@ -191,7 +199,14 @@ function registerScaleFleetSimulatorTasks(on) {
         '--max-concurrency',
         '10',
       ]
-      simulatorProcess = spawn(bin, args, { stdio: 'ignore' })
+      simulatorDiagnostics = []
+      simulatorProcess = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+      simulatorProcess.stdout?.on('data', recordSimulatorDiagnostic)
+      simulatorProcess.stderr?.on('data', recordSimulatorDiagnostic)
+      simulatorProcess.once('error', (error) => recordSimulatorDiagnostic(`spawn error: ${error.message}`))
+      simulatorProcess.once('exit', (code, signal) => {
+        recordSimulatorDiagnostic(`process exited: code=${code ?? 'null'} signal=${signal || 'none'}`)
+      })
       return { pid: simulatorProcess.pid }
     },
 
@@ -875,8 +890,16 @@ function registerScaleFleetSimulatorTasks(on) {
         }
         await sleep(pollMs)
       }
+      const processState = !simulatorProcess
+        ? 'not started'
+        : simulatorProcess.exitCode !== null
+          ? `exited with code ${simulatorProcess.exitCode}`
+          : simulatorProcess.killed
+            ? 'killed'
+            : 'still running'
+      const diagnostics = simulatorDiagnostics.length ? ` Diagnostics: ${simulatorDiagnostics.join(' | ')}` : ''
       throw new Error(
-        `Timed out after ${timeoutMs}ms waiting for ${expected} devices (last count: ${last}). ${lastErr ? lastErr.message : ''}`,
+        `Timed out after ${timeoutMs}ms waiting for ${expected} devices (last count: ${last}; simulator ${processState}). ${lastErr ? lastErr.message : ''}${diagnostics}`,
       )
     },
   })

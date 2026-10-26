@@ -130,8 +130,12 @@ describe('Fleet Management', () => {
       cy.task('catalogInheritanceCleanup', fixture)
     })
 
+    afterEach(() => {
+      fleetsPage.dismissOpenWizard()
+    })
+
     it('Should create a fleet with pinned catalog OS and application references', () => {
-      cy.intercept('POST', '**/fleets*').as('createFleetRequest')
+      cy.intercept('**/api/v1/fleets**').as('createFleetRequest')
       fleetsPage.openCreateFleetWizard()
       fleetsPage.proceedToDeviceTemplate(fixture.fleetName)
       fleetsPage.addCatalogOs(fixture.osItemName, channel, initialVersion)
@@ -250,7 +254,7 @@ describe('Fleet Management', () => {
     })
 
     it('Should allow optional schema configuration and expose Form/YAML views with catalog defaults', () => {
-      cy.intercept('POST', '**/fleets*').as('createConfigFleetRequest')
+      cy.intercept('**/api/v1/fleets**').as('createConfigFleetRequest')
       fleetsPage.openCreateFleetWizard()
       fleetsPage.proceedToDeviceTemplate(fixture.configFleetName)
       fleetsPage.openCatalogApplicationPicker()
@@ -284,7 +288,7 @@ describe('Fleet Management', () => {
     })
 
     it('Should require schema fields that are not satisfied by catalog defaults', () => {
-      cy.intercept('POST', '**/fleets*').as('createRequiredFleetRequest')
+      cy.intercept('**/api/v1/fleets**').as('createRequiredFleetRequest')
       fleetsPage.openCreateFleetWizard()
       fleetsPage.proceedToDeviceTemplate(fixture.requiredFleetName)
       fleetsPage.openCatalogApplicationPicker()

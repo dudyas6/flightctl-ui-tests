@@ -463,6 +463,30 @@ export const fleetsPage = {
     cy.get('[data-testid="wizard-cancel-button"]').should('not.exist')
   },
 
+  /** Best-effort cleanup so a failed picker/wizard cannot cascade into later tests. */
+  dismissOpenWizard: () => {
+    cy.get('body').then(($body) => {
+      const $dialogs = $body.find('[role="dialog"]:visible')
+      if (!$dialogs.length) return
+
+      const $dialog = $dialogs.last()
+      const $close = $dialog.find(
+        '[data-testid="wizard-cancel-button"], button[aria-label="Close"], button',
+      ).filter((_, element) => /cancel|close|discard/i.test((element.textContent || '').trim()) ||
+        element.getAttribute('aria-label') === 'Close')
+
+      if ($close.length) cy.wrap($close.first()).click({ force: true })
+      else cy.get('body').type('{esc}', { force: true })
+    })
+    cy.get('body').then(($body) => {
+      const $discard = $body.find('button:visible').filter((_, element) =>
+        /discard changes/i.test((element.textContent || '').trim()),
+      )
+      if ($discard.length) cy.wrap($discard.first()).click({ force: true })
+    })
+    cy.get('[role="dialog"]:visible').should('not.exist')
+  },
+
   /**
    * Edit an existing fleet
    */

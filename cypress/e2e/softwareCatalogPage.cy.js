@@ -79,8 +79,8 @@ describe('Software Catalog – Deploy to fleet', () => {
         softwareCatalogPage.clickDeploy()
       })
 
-      it('Should keep the Application configuration step in the deploy wizard', () => {
-        softwareCatalogPage.expectApplicationConfigurationStep()
+      it('Should open the deployment specifications step in the deploy wizard', () => {
+        softwareCatalogPage.expectDeploymentSpecificationsStep()
       })
     })
 

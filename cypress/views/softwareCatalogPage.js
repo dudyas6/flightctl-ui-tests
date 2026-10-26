@@ -33,9 +33,11 @@ export const softwareCatalogPage = {
     cy.contains('button', 'Deploy').should('be.visible').click()
   },
 
-  /** Verify the main-navigation deploy wizard still includes application configuration. */
-  expectApplicationConfigurationStep: () => {
-    cy.contains('Application configuration', { timeout: 30000 }).should('be.visible')
+  /** Verify the current deploy wizard starts on deployment specifications. */
+  expectDeploymentSpecificationsStep: () => {
+    cy.contains('Deployment specifications', { timeout: 30000 }).should('be.visible')
+    cy.contains('Target type', { timeout: 30000 }).should('be.visible')
+    cy.get('[data-testid="wizard-next-button"]', { timeout: 30000 }).should('be.visible')
   },
 
   /**
