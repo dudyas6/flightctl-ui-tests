@@ -5,6 +5,10 @@ const os = require('os')
 
 let simulatorProcess = null
 let simulatorDiagnostics = []
+const SIMULATOR_STOP_TIMEOUT_MS = 30000
+
+const simulatorHasExited = (processHandle) =>
+  processHandle.exitCode !== null || processHandle.signalCode !== null
 
 function recordSimulatorDiagnostic(chunk) {
   const text = String(chunk || '').trim()
@@ -175,8 +179,14 @@ function registerScaleFleetSimulatorTasks(on) {
      * If a simulator child is already running, returns `{ alreadyRunning: true }` instead of starting another.
      */
     scaleFleetSimulatorStart({ count = 50, label = 'fleet=scale-fleet-00', initialDeviceIndex = 0 } = {}) {
-      if (simulatorProcess && simulatorProcess.exitCode === null && !simulatorProcess.killed) {
-        return { alreadyRunning: true, pid: simulatorProcess.pid }
+      if (simulatorProcess) {
+        if (simulatorHasExited(simulatorProcess)) {
+          simulatorProcess = null
+        } else if (!simulatorProcess.killed) {
+          return { alreadyRunning: true, pid: simulatorProcess.pid }
+        } else {
+          throw new Error(`Device simulator PID ${simulatorProcess.pid} is still stopping`)
+        }
       }
       // Remove stale device data so the simulator re-submits enrollment requests
       // after a backend cleanup (deleted devices leave orphaned dirs that fool the simulator).
@@ -797,19 +807,58 @@ function registerScaleFleetSimulatorTasks(on) {
     },
 
     /**
-     * Sends SIGTERM to the spawned simulator process and clears the module-level handle.
+     * Sends SIGTERM to the spawned simulator process and waits for it to exit before
+     * clearing the module-level handle. This keeps a final agent heartbeat from
+     * overwriting status patches made immediately after the stop task.
      * Safe to call when nothing is running; subsequent starts create a fresh child process.
      */
     scaleFleetSimulatorStop() {
-      if (simulatorProcess && !simulatorProcess.killed) {
-        try {
-          simulatorProcess.kill('SIGTERM')
-        } catch (_) {
-          /* ignore */
+      const processToStop = simulatorProcess
+      if (!processToStop) return null
+
+      if (simulatorHasExited(processToStop)) {
+        if (simulatorProcess === processToStop) simulatorProcess = null
+        return {
+          pid: processToStop.pid,
+          exitCode: processToStop.exitCode,
+          signal: processToStop.signalCode,
         }
       }
-      simulatorProcess = null
-      return null
+
+      return new Promise((resolve, reject) => {
+        const onExit = (code, signal) => {
+          clearTimeout(timeout)
+          processToStop.removeListener('error', onError)
+          if (simulatorProcess === processToStop) simulatorProcess = null
+          resolve({ pid: processToStop.pid, exitCode: code, signal })
+        }
+        const onError = (error) => {
+          clearTimeout(timeout)
+          processToStop.removeListener('exit', onExit)
+          reject(new Error(`Failed waiting for device simulator PID ${processToStop.pid} to stop: ${error.message}`))
+        }
+        const timeout = setTimeout(() => {
+          processToStop.removeListener('exit', onExit)
+          processToStop.removeListener('error', onError)
+          reject(new Error(`Timed out after ${SIMULATOR_STOP_TIMEOUT_MS}ms waiting for device simulator PID ${processToStop.pid} to stop`))
+        }, SIMULATOR_STOP_TIMEOUT_MS)
+
+        processToStop.once('exit', onExit)
+        processToStop.once('error', onError)
+
+        if (simulatorHasExited(processToStop)) {
+          onExit(processToStop.exitCode, processToStop.signalCode)
+          return
+        }
+
+        if (!processToStop.killed) {
+          try {
+            processToStop.kill('SIGTERM')
+          } catch (error) {
+            onError(error)
+          }
+        }
+      })
     },
 
     /**

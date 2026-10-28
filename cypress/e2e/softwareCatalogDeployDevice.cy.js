@@ -17,6 +17,7 @@ import {
  */
 const SIM_LABEL = 'env=catalog-deploy-test'
 const DEVICE_ALIAS = Cypress.env('deviceAlias') || 'device-00100'
+let deploymentFlowFailed = false
 
 const waitForDeployableDevice = (deviceName, attempts = 30) =>
   cy.task('getDeviceStatus', { deviceName }).then((device) => {
@@ -35,13 +36,19 @@ describe('Software Catalog – Deploy to device & Delete protection', () => {
     cy.ensureLoggedIn()
   })
 
+  beforeEach(function () {
+    // The steps share wizard state; skip later steps after a failure and let
+    // the suite's after hook stop the simulator cleanly.
+    if (deploymentFlowFailed) this.skip()
+  })
+
   after(() => {
     cy.task('scaleFleetSimulatorStop')
   })
 
   afterEach(function () {
     if (this.currentTest.state === 'failed') {
-      Cypress.runner.stop()
+      deploymentFlowFailed = true
     }
   })
 

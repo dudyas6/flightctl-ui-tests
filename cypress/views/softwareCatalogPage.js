@@ -106,6 +106,7 @@ export const softwareCatalogPage = {
 
   /** Select the "Existing Device" radio in the Specifications step. */
   selectExistingDeviceTarget: () => {
+    cy.get('#radiofield-device-radio', { timeout: 60000 }).should('be.enabled')
     cy.get('label[for="radiofield-device-radio"]', { timeout: 30000 })
       .should('be.visible')
       .click()
