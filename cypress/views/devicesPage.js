@@ -1,4 +1,5 @@
 import { common, deviceDetailsFleetRow, systemImageInput } from './common'
+import { fleetsPage } from './fleetsPage'
 
 /** Default table row index for flows that assume a single primary device row */
 const ROW_0 = 0
@@ -788,6 +789,54 @@ export const devicesPage = {
     cy.contains('Edit device configurations').click()
     cy.contains('h1', 'Edit device').should('be.visible')
     cy.get('[data-testid="wizard-next-button"]').should('be.visible')
+  },
+
+  addCatalogOs: (itemName, channel, version) => {
+    fleetsPage.addCatalogOs(itemName, channel, version)
+  },
+
+  addCatalogApplication: (itemName, channel, version) => {
+    fleetsPage.addCatalogApplication(itemName, channel, version)
+  },
+
+  expectCatalogInheritanceTemplate: (osItemName, appItemName, channel, version) => {
+    fleetsPage.expectCatalogInheritanceTemplate(osItemName, appItemName, channel, version)
+  },
+
+  closeWizardWithoutChanges: () => {
+    fleetsPage.closeWizardWithoutChanges()
+  },
+
+  removeCatalogReferencesIfPresent: (osItemName, appItemName) => {
+    const references = [
+      { itemName: appItemName, removeLabel: 'Delete application' },
+      { itemName: osItemName, removeLabel: 'Delete system image' },
+    ]
+    references.forEach(({ itemName, removeLabel }) => {
+      cy.get('body').then(($body) => {
+        const card = $body.find('.fctl-catalog-ref-card').filter((_, element) =>
+          Cypress.$(element).text().includes(itemName))
+        if (!card.length) return
+
+        cy.contains('.fctl-catalog-ref-card', itemName)
+          .parents()
+          .filter((_, element) => Cypress.$(element).find(`button[aria-label="${removeLabel}"]`).length > 0)
+          .first()
+          .find(`button[aria-label="${removeLabel}"]`)
+          .scrollIntoView()
+          .should('be.visible')
+          .click()
+        cy.get('[role="dialog"]:visible').contains('button', /^Delete$/).click()
+        cy.get('[role="dialog"]:visible').should('not.exist')
+      })
+    })
+  },
+
+  saveDeviceTemplateWizard: () => {
+    cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+    cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+    cy.get('[data-testid="wizard-save-button"]').should('be.visible').click()
+    cy.get('[data-testid="device-details-title"]', { timeout: 120000 }).should('be.visible')
   },
 
   addApplications: (deviceName, apps) => {

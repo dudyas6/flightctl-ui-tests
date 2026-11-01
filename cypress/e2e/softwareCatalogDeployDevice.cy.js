@@ -17,11 +17,29 @@ import {
  */
 const SIM_LABEL = 'env=catalog-deploy-test'
 const DEVICE_ALIAS = Cypress.env('deviceAlias') || 'device-00100'
+let deploymentFlowFailed = false
+
+const waitForDeployableDevice = (deviceName, attempts = 30) =>
+  cy.task('getDeviceStatus', { deviceName }).then((device) => {
+    const osMode = device?.status?.systemInfo?.osMode || device?.status?.capabilities?.osMode
+    if (osMode === 'image') return
+    if (attempts <= 1) {
+      throw new Error(`Device ${deviceName} did not become deployable: status.capabilities.osMode=${osMode || '<missing>'}`)
+    }
+    cy.wait(2000)
+    return waitForDeployableDevice(deviceName, attempts - 1)
+  })
 
 describe('Software Catalog – Deploy to device & Delete protection', () => {
   before(() => {
     Cypress.on('uncaught:exception', () => false)
     cy.ensureLoggedIn()
+  })
+
+  beforeEach(function () {
+    // The steps share wizard state; skip later steps after a failure and let
+    // the suite's after hook stop the simulator cleanly.
+    if (deploymentFlowFailed) this.skip()
   })
 
   after(() => {
@@ -30,7 +48,7 @@ describe('Software Catalog – Deploy to device & Delete protection', () => {
 
   afterEach(function () {
     if (this.currentTest.state === 'failed') {
-      Cypress.runner.stop()
+      deploymentFlowFailed = true
     }
   })
 
@@ -69,6 +87,7 @@ describe('Software Catalog – Deploy to device & Delete protection', () => {
           cy.task('patchDeviceOsMode', { deviceName, osMode: 'image' }).then(
             (result) => {
               expect(result.success).to.be.true
+              return waitForDeployableDevice(deviceName)
             },
           )
         },

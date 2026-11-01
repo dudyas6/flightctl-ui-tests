@@ -68,4 +68,119 @@ describe('Fleet Management', () => {
       fleetsPage.deleteFleet('basic-nginx-fleet')
     }) */
   })
+
+  describe('Catalog inheritance for fleets', () => {
+    const fixture = {}
+    const channel = 'stable'
+    const initialVersion = '1.0.0'
+    const updateVersion = '1.1.0'
+
+    before(() => {
+      cy.task('catalogInheritanceSetup', { catalogName: 'default', includeRequiredConfigApp: true }).then((created) => {
+        Object.assign(fixture, created)
+      })
+    })
+
+    after(() => {
+      if (!fixture.fleetName) return
+      cy.task('catalogInheritanceCleanup', fixture)
+    })
+
+    it('Should create a fleet with pinned catalog OS and application references', () => {
+      fleetsPage.openCreateFleetWizard()
+      fleetsPage.proceedToDeviceTemplate(fixture.fleetName)
+      fleetsPage.addCatalogOs(fixture.osItemName, channel, initialVersion)
+      fleetsPage.addCatalogApplication(fixture.appItemName, channel, initialVersion)
+      cy.get('.fctl-catalog-ref-card').should('not.contain.text', 'Update available')
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      fleetsPage.expectCatalogInheritanceReview(
+        fixture.osItemName,
+        fixture.appItemName,
+        channel,
+        initialVersion,
+      )
+      cy.get('[data-testid="wizard-save-button"]').should('be.visible').click()
+      fleetsPage.openFleetCatalogTab()
+      fleetsPage.expectCatalogItemState(fixture.osItemName, initialVersion, true)
+      fleetsPage.expectCatalogItemState(fixture.appItemName, initialVersion, true)
+
+      fleetsPage.openEditFleetWizard(fixture.fleetName)
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      fleetsPage.expectCatalogInheritanceTemplate(
+        fixture.osItemName,
+        fixture.appItemName,
+        channel,
+        initialVersion,
+      )
+      fleetsPage.closeWizardWithoutChanges()
+      fleetsPage.openFleetDetails(fixture.fleetName)
+      fleetsPage.openFleetCatalogTab()
+    })
+
+    it('Should update catalog OS and application independently', () => {
+      fleetsPage.expectCatalogItemState(fixture.osItemName, initialVersion, true)
+      fleetsPage.expectCatalogItemState(fixture.appItemName, initialVersion, true)
+
+      fleetsPage.updateCatalogItem(fixture.osItemName, channel, initialVersion, updateVersion)
+      fleetsPage.expectCatalogItemState(fixture.osItemName, updateVersion, false)
+      fleetsPage.expectCatalogItemState(fixture.appItemName, initialVersion, true)
+
+      fleetsPage.updateCatalogItem(fixture.appItemName, channel, initialVersion, updateVersion)
+      fleetsPage.expectCatalogItemState(fixture.osItemName, updateVersion, false)
+      fleetsPage.expectCatalogItemState(fixture.appItemName, updateVersion, false)
+    })
+
+    it('When catalog configuration is required it should block adding the app until the field is filled', () => {
+      const requiredValue = 'configured-by-fleet'
+      fleetsPage.openCreateFleetWizard()
+      fleetsPage.proceedToDeviceTemplate(fixture.configFleetName)
+      fleetsPage.addCatalogOs(fixture.osItemName, channel, initialVersion)
+      fleetsPage.addRequiredConfigCatalogApplication(
+        fixture.requiredAppItemName,
+        channel,
+        initialVersion,
+        requiredValue,
+      )
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      cy.get('[data-testid="wizard-save-button"]').should('be.visible').click()
+      fleetsPage.openFleetCatalogTab()
+      fleetsPage.expectCatalogItemState(fixture.requiredAppItemName, initialVersion, false)
+
+      cy.task('getFleetCatalogApplication', {
+        fleetName: fixture.configFleetName,
+        itemName: fixture.requiredAppItemName,
+      }).then((app) => {
+        expect(app.catalogItemRef).to.deep.include({
+          catalog: fixture.catalogName,
+          item: fixture.requiredAppItemName,
+          channel,
+          version: initialVersion,
+        })
+        expect(app.envVars?.REQUIRED_VALUE).to.equal(requiredValue)
+      })
+    })
+
+    it('Should edit another fleet to use catalog OS and application references', () => {
+      fleetsPage.createFleet(`${Cypress.env('image')}`, fixture.editFleetName)
+      fleetsPage.openEditFleetWizard(fixture.editFleetName)
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      cy.contains('System image', { timeout: 30000 }).should('be.visible')
+      fleetsPage.addCatalogOs(fixture.osItemName, channel, initialVersion)
+      fleetsPage.addCatalogApplication(fixture.appItemName, channel, initialVersion)
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      fleetsPage.expectCatalogInheritanceReview(
+        fixture.osItemName,
+        fixture.appItemName,
+        channel,
+        initialVersion,
+      )
+      cy.get('[data-testid="wizard-save-button"]').should('be.visible').click()
+      fleetsPage.openFleetCatalogTab()
+      fleetsPage.expectCatalogItemState(fixture.osItemName, initialVersion, true)
+      fleetsPage.expectCatalogItemState(fixture.appItemName, initialVersion, true)
+    })
+  })
 })

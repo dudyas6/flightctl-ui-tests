@@ -33,6 +33,13 @@ export const softwareCatalogPage = {
     cy.contains('button', 'Deploy').should('be.visible').click()
   },
 
+  /** Verify the current deploy wizard starts on deployment specifications. */
+  expectDeploymentSpecificationsStep: () => {
+    cy.contains('Deployment specifications', { timeout: 30000 }).should('be.visible')
+    cy.contains('Target type', { timeout: 30000 }).should('be.visible')
+    cy.get('[data-testid="wizard-next-button"]', { timeout: 30000 }).should('be.visible')
+  },
+
   /**
    * Select the "Existing Fleet" radio in the Specifications step.
    * RadioField prefixes the id prop with "radiofield-", so id="fleet-radio"
@@ -99,6 +106,7 @@ export const softwareCatalogPage = {
 
   /** Select the "Existing Device" radio in the Specifications step. */
   selectExistingDeviceTarget: () => {
+    cy.get('#radiofield-device-radio', { timeout: 60000 }).should('be.enabled')
     cy.get('label[for="radiofield-device-radio"]', { timeout: 30000 })
       .should('be.visible')
       .click()

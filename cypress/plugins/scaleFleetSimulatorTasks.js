@@ -4,6 +4,18 @@ const path = require('path')
 const os = require('os')
 
 let simulatorProcess = null
+let simulatorDiagnostics = []
+const SIMULATOR_STOP_TIMEOUT_MS = 30000
+
+const simulatorHasExited = (processHandle) =>
+  processHandle.exitCode !== null || processHandle.signalCode !== null
+
+function recordSimulatorDiagnostic(chunk) {
+  const text = String(chunk || '').trim()
+  if (!text) return
+  simulatorDiagnostics.push(text)
+  simulatorDiagnostics = simulatorDiagnostics.slice(-20)
+}
 
 /**
  * Parses ~/.config/flightctl/client.yaml to extract service.server and
@@ -167,8 +179,14 @@ function registerScaleFleetSimulatorTasks(on) {
      * If a simulator child is already running, returns `{ alreadyRunning: true }` instead of starting another.
      */
     scaleFleetSimulatorStart({ count = 50, label = 'fleet=scale-fleet-00', initialDeviceIndex = 0 } = {}) {
-      if (simulatorProcess && !simulatorProcess.killed) {
-        return { alreadyRunning: true, pid: simulatorProcess.pid }
+      if (simulatorProcess) {
+        if (simulatorHasExited(simulatorProcess)) {
+          simulatorProcess = null
+        } else if (!simulatorProcess.killed) {
+          return { alreadyRunning: true, pid: simulatorProcess.pid }
+        } else {
+          throw new Error(`Device simulator PID ${simulatorProcess.pid} is still stopping`)
+        }
       }
       // Remove stale device data so the simulator re-submits enrollment requests
       // after a backend cleanup (deleted devices leave orphaned dirs that fool the simulator).
@@ -191,7 +209,14 @@ function registerScaleFleetSimulatorTasks(on) {
         '--max-concurrency',
         '10',
       ]
-      simulatorProcess = spawn(bin, args, { stdio: 'ignore' })
+      simulatorDiagnostics = []
+      simulatorProcess = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+      simulatorProcess.stdout?.on('data', recordSimulatorDiagnostic)
+      simulatorProcess.stderr?.on('data', recordSimulatorDiagnostic)
+      simulatorProcess.once('error', (error) => recordSimulatorDiagnostic(`spawn error: ${error.message}`))
+      simulatorProcess.once('exit', (code, signal) => {
+        recordSimulatorDiagnostic(`process exited: code=${code ?? 'null'} signal=${signal || 'none'}`)
+      })
       return { pid: simulatorProcess.pid }
     },
 
@@ -324,10 +349,12 @@ function registerScaleFleetSimulatorTasks(on) {
     },
 
     /**
-     * Patches only status.capabilities.osMode on an existing device via GET/PUT.
+     * Patches the reported OS mode on an existing device via GET/PUT.
      * The device simulator always reports osMode=package; the catalog deploy wizard
      * filters out package-based devices, so we flip osMode to "image" after
      * enrollment so the device appears as a valid deploy target.
+     * Newer agents report the authoritative value in status.systemInfo.osMode;
+     * status.capabilities.osMode is retained for older-agent compatibility.
      *
      * IMPORTANT: stop the simulator BEFORE calling this — otherwise the agent
      * heartbeat will overwrite the patched osMode back to "package".
@@ -388,7 +415,9 @@ function registerScaleFleetSimulatorTasks(on) {
           return { success: false, error: `parse device JSON: ${e.message}` }
         }
         if (!device.status) device.status = {}
+        if (!device.status.systemInfo) device.status.systemInfo = {}
         if (!device.status.capabilities) device.status.capabilities = {}
+        device.status.systemInfo.osMode = osMode
         device.status.capabilities.osMode = osMode
         console.log(`[patchDeviceOsMode] Setting ${deviceName} osMode=${osMode} (attempt ${attempt})`)
 
@@ -778,19 +807,58 @@ function registerScaleFleetSimulatorTasks(on) {
     },
 
     /**
-     * Sends SIGTERM to the spawned simulator process and clears the module-level handle.
+     * Sends SIGTERM to the spawned simulator process and waits for it to exit before
+     * clearing the module-level handle. This keeps a final agent heartbeat from
+     * overwriting status patches made immediately after the stop task.
      * Safe to call when nothing is running; subsequent starts create a fresh child process.
      */
     scaleFleetSimulatorStop() {
-      if (simulatorProcess && !simulatorProcess.killed) {
-        try {
-          simulatorProcess.kill('SIGTERM')
-        } catch (_) {
-          /* ignore */
+      const processToStop = simulatorProcess
+      if (!processToStop) return null
+
+      if (simulatorHasExited(processToStop)) {
+        if (simulatorProcess === processToStop) simulatorProcess = null
+        return {
+          pid: processToStop.pid,
+          exitCode: processToStop.exitCode,
+          signal: processToStop.signalCode,
         }
       }
-      simulatorProcess = null
-      return null
+
+      return new Promise((resolve, reject) => {
+        const onExit = (code, signal) => {
+          clearTimeout(timeout)
+          processToStop.removeListener('error', onError)
+          if (simulatorProcess === processToStop) simulatorProcess = null
+          resolve({ pid: processToStop.pid, exitCode: code, signal })
+        }
+        const onError = (error) => {
+          clearTimeout(timeout)
+          processToStop.removeListener('exit', onExit)
+          reject(new Error(`Failed waiting for device simulator PID ${processToStop.pid} to stop: ${error.message}`))
+        }
+        const timeout = setTimeout(() => {
+          processToStop.removeListener('exit', onExit)
+          processToStop.removeListener('error', onError)
+          reject(new Error(`Timed out after ${SIMULATOR_STOP_TIMEOUT_MS}ms waiting for device simulator PID ${processToStop.pid} to stop`))
+        }, SIMULATOR_STOP_TIMEOUT_MS)
+
+        processToStop.once('exit', onExit)
+        processToStop.once('error', onError)
+
+        if (simulatorHasExited(processToStop)) {
+          onExit(processToStop.exitCode, processToStop.signalCode)
+          return
+        }
+
+        if (!processToStop.killed) {
+          try {
+            processToStop.kill('SIGTERM')
+          } catch (error) {
+            onError(error)
+          }
+        }
+      })
     },
 
     /**
@@ -875,8 +943,16 @@ function registerScaleFleetSimulatorTasks(on) {
         }
         await sleep(pollMs)
       }
+      const processState = !simulatorProcess
+        ? 'not started'
+        : simulatorProcess.exitCode !== null
+          ? `exited with code ${simulatorProcess.exitCode}`
+          : simulatorProcess.killed
+            ? 'killed'
+            : 'still running'
+      const diagnostics = simulatorDiagnostics.length ? ` Diagnostics: ${simulatorDiagnostics.join(' | ')}` : ''
       throw new Error(
-        `Timed out after ${timeoutMs}ms waiting for ${expected} devices (last count: ${last}). ${lastErr ? lastErr.message : ''}`,
+        `Timed out after ${timeoutMs}ms waiting for ${expected} devices (last count: ${last}; simulator ${processState}). ${lastErr ? lastErr.message : ''}${diagnostics}`,
       )
     },
   })

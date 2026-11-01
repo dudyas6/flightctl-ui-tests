@@ -1,4 +1,5 @@
 import { devicesPage, LOG_PRIORITIES } from '../views/devicesPage'
+import { systemImageInput } from '../views/common'
 
 const DEVICE_NAME = 'test-device'
 const DEVICE_NAME_EDITED = 'test-device-edited'
@@ -56,6 +57,54 @@ describe('Device Management', () => {
     /* it('Should open a terminal on a device', () => {
       devicesPage.openTerminal()
     }) */
+  })
+
+  describe('Catalog inheritance for standalone devices', () => {
+    const fixture = {}
+    let originalImage
+    let catalogSaveAttempted = false
+
+    before(() => {
+      cy.task('catalogInheritanceSetup', { catalogName: 'default' }).then((created) => {
+        Object.assign(fixture, created)
+      })
+    })
+
+    after(() => {
+      if (!fixture.osItemName) return
+
+      if (catalogSaveAttempted) {
+        devicesPage.openEditDeviceConfigurations(DEVICE_NAME)
+        cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+        devicesPage.removeCatalogReferencesIfPresent(fixture.osItemName, fixture.appItemName)
+        systemImageInput().clear().type(originalImage || Cypress.env('image'))
+        devicesPage.saveDeviceTemplateWizard()
+      }
+      cy.task('catalogInheritanceCleanup', fixture)
+    })
+
+    it('Should save pinned catalog OS and application references on a standalone device', () => {
+      devicesPage.openEditDeviceConfigurations(DEVICE_NAME)
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      systemImageInput().invoke('val').then((image) => {
+        originalImage = image
+      })
+      systemImageInput().clear()
+      devicesPage.addCatalogOs(fixture.osItemName, fixture.channel, fixture.initialVersion)
+      devicesPage.addCatalogApplication(fixture.appItemName, fixture.channel, fixture.initialVersion)
+      catalogSaveAttempted = true
+      devicesPage.saveDeviceTemplateWizard()
+
+      devicesPage.openEditDeviceConfigurations(DEVICE_NAME)
+      cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+      devicesPage.expectCatalogInheritanceTemplate(
+        fixture.osItemName,
+        fixture.appItemName,
+        fixture.channel,
+        fixture.initialVersion,
+      )
+      devicesPage.closeWizardWithoutChanges()
+    })
   })
 
   describe('Edit device, view device events', () => {

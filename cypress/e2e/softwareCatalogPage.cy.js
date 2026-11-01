@@ -78,6 +78,10 @@ describe('Software Catalog – Deploy to fleet', () => {
       it('Should click Deploy in the catalog item details drawer', () => {
         softwareCatalogPage.clickDeploy()
       })
+
+      it('Should open the deployment specifications step in the deploy wizard', () => {
+        softwareCatalogPage.expectDeploymentSpecificationsStep()
+      })
     })
 
     describe('Deploy wizard – Step 1: Specifications', () => {
