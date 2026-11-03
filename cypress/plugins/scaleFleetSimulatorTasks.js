@@ -228,7 +228,7 @@ function registerScaleFleetSimulatorTasks(on) {
      *
      * Returns { success: true } or { success: false, error: string }.
      */
-    async patchDeviceStatus({ deviceName, image, imageDigest }) {
+    async patchDeviceStatus({ deviceName, image, imageDigest, architecture = '' }) {
       // Read FlightCtl client config to get server URL and bearer token.
       // The CLI's `apply` command only updates the device spec, not status.
       // We must PUT to /api/v1/devices/{name}/status directly.
@@ -308,7 +308,7 @@ function registerScaleFleetSimulatorTasks(on) {
           summary: { status: 'Unknown' },
           lifecycle: { status: 'Unknown' },
           os: { image, imageDigest },
-          systemInfo: { agentVersion: '', architecture: '', bootID: '', operatingSystem: '' },
+          systemInfo: { agentVersion: '', architecture, bootID: '', operatingSystem: '' },
         }
         const putResp = await makeRequest('PUT', statusPath, device)
         if (putResp.statusCode === 409 && attempt < 3) {
