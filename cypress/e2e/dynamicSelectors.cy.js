@@ -72,35 +72,32 @@ describe('Device-reported selectors', () => {
     cy.task('dynamicSelectorMatches', `${fixture.scalarKey}=amd64`).should('be.empty')
   })
 
-  it('warns for a mapped fleet and batch selector and requires acknowledgment', () => {
-    startFleet(`selector-warning-${Date.now()}`)
-    addSelector(`${fixture.mapKey}=amd64`)
+  it('creates a fleet from a mapped label and keeps static selectors quiet', () => {
+    const fleetName = `selector-mapped-${Date.now()}`
+    fixture.fleet = fleetName
+    const label = `${fixture.mapKey}=amd64`
+    cy.task('dynamicSelectorMatches', label).should('deep.equal', [fixture.device])
+
+    startFleet(fleetName)
+    addSelector(label)
+    cy.contains('1 device matching the labels was selected.').should('be.visible')
     cy.contains('Device-reported labels can change fleet membership').should('be.visible')
     cy.contains('Device-reported labels can change fleet membership')
       .closest('.pf-v6-c-alert').should('contain', fixture.mapKey)
+    cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+    systemImageInput().should('be.visible').type(Cypress.env('image'))
+    cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+    cy.get('[data-testid="wizard-next-button"]').should('not.be.disabled').click()
+    cy.get('[data-testid="wizard-save-button"]').should('be.visible').click()
 
-    cy.get('[data-testid="wizard-next-button"]').click()
-    systemImageInput().type(Cypress.env('image'))
-    cy.get('[data-testid="wizard-next-button"]').click()
-    cy.contains('label', 'Customize maintenance window and scheduling').click()
-    cy.contains('label', 'Set rollout order').click()
-    cy.contains('button', 'Add batch').click()
-    cy.contains('.pf-v6-c-form__label-text', 'Select devices')
-      .parents('.pf-v6-c-form__group')
-      .contains('button', 'Add label').click()
-    cy.get('input[aria-label="New label"]').last().type(`${fixture.mapKey}=amd64{enter}`)
-    cy.contains('Device-reported labels can change batch membership').should('be.visible')
+    cy.task('dynamicSelectorGetFleet', fleetName).then((createdFleet) => {
+      expect(createdFleet.spec.selector.matchLabels).to.deep.equal({ [fixture.mapKey]: 'amd64' })
+    })
 
-    cy.get('[data-testid="wizard-next-button"]').click()
-    cy.contains('label', /acknowledge|I understand/i).should('be.visible')
-    cy.get('[data-testid="wizard-save-button"]').should('be.disabled')
-    cy.contains('label', /acknowledge|I understand/i).find('input[type="checkbox"]').check()
-    cy.get('[data-testid="wizard-save-button"]').should('not.be.disabled')
-  })
-
-  it('warns for an unobserved key while an active map mapping exists', () => {
-    startFleet(`selector-fallback-${Date.now()}`)
-    addSelector(`${fixture.unobservedKey}=future`)
-    cy.contains('Device-reported labels can change fleet membership').should('be.visible')
+    startFleet(`static-selector-${Date.now()}`)
+    addSelector(`${fixture.operatorKey}=static`)
+    cy.contains('1 device matching the labels was selected.').should('be.visible')
+    cy.contains('Device-reported labels can change fleet membership').should('not.exist')
+    fleetsPage.closeCreateFleetWizard()
   })
 })

@@ -23,7 +23,6 @@ function registerDynamicSelectorTasks(on) {
         scalarKey: `qe.flightctl.io/architecture-${id}`,
         mapKey: `qe.flightctl.io/map-${id}`,
         operatorKey: `qe.flightctl.io/operator-${id}`,
-        unobservedKey: `qe.flightctl.io/unobserved-${id}`,
       }
       const resource = (kind, name, extra) => ({
         apiVersion: 'flightctl.io/v1beta1', kind,
@@ -67,12 +66,17 @@ function registerDynamicSelectorTasks(on) {
       return (list.items || []).map((item) => item.metadata.name)
     },
 
+    dynamicSelectorGetFleet(name) {
+      return JSON.parse(runFlightctl(['get', 'fleet', name, '-o', 'json']))
+    },
+
     dynamicSelectorDeleteScalar(name) {
       remove('labelsyncmapping', name)
       return null
     },
 
     dynamicSelectorCleanup(fixture) {
+      if (fixture.fleet) remove('fleet', fixture.fleet)
       remove('labelsyncmapping', fixture.scalar)
       remove('labelsyncmapping', fixture.map)
       remove('device', fixture.device)
