@@ -59,7 +59,8 @@ describe('Device-reported selectors', () => {
       .should('be.visible')
       .click()
 
-    cy.get('[data-testid="device-details-title"]').should('contain', fixture.device)
+    cy.get('[data-testid="device-details-title"]').should('be.visible')
+    cy.get('nav[aria-label="Breadcrumb"]').should('contain', fixture.device)
     cy.contains('button', /View all device-reported labels/).click()
     cy.contains('Read-only').should('be.visible')
     cy.contains('.pf-v6-c-label', `${fixture.scalarKey}=amd64`).should('be.visible')
