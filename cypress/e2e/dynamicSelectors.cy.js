@@ -62,11 +62,14 @@ describe('Device-reported selectors', () => {
     cy.get('[data-testid="device-details-title"]').should('be.visible')
     cy.get('nav[aria-label="Breadcrumb"]').should('contain', fixture.device)
     cy.contains('button', /View all device-reported labels/).click()
-    cy.get('.pf-v6-c-drawer__panel').within(() => {
-      cy.contains('Read-only').should('be.visible')
-      cy.contains('.pf-v6-c-label', `${fixture.scalarKey}=amd64`).should('be.visible')
-      cy.contains('.pf-v6-c-label', label).should('be.visible')
-    })
+    cy.get('.pf-v6-c-drawer__panel')
+      .filter(':visible')
+      .should('have.length', 1)
+      .within(() => {
+        cy.contains('Read-only').should('be.visible')
+        cy.contains('.pf-v6-c-label', `${fixture.scalarKey}=amd64`).should('be.visible')
+        cy.contains('.pf-v6-c-label', label).should('be.visible')
+      })
     cy.get(`button[aria-label="Close ${fixture.scalarKey}=amd64"]`).should('not.exist')
     cy.get(`button[aria-label="Close ${fixture.operatorKey}=static"]`).should('exist')
 
