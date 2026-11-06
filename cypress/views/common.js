@@ -16,7 +16,7 @@ export const deviceDetailsFleetRow = (timeout = 60000) => {
     '.pf-v6-c-description-list__group',
     '.pf-v6-l-stack',
   ].join(', ')
-  return cy.contains(termOrLegacyLabel, /^(Fleet name|Fleet)$/, { timeout }).closest(row)
+  return cy.contains(termOrLegacyLabel, /^(Fleet name|Fleet)$/, { timeout }).closest(row, { timeout })
 }
 
 /**
